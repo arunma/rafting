@@ -38,6 +38,7 @@ impl RaftGrpcServerStub {
 
     pub async fn run(self, address: SocketAddr) -> Result<(), RaftError> {
         //Start the tonic RPC server
+        info!("Starting tonic server");
         Server::builder()
             .add_service(RaftGrpcServer::new(self))
             .serve(address)

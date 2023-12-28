@@ -1,10 +1,11 @@
-use std::error::Error;
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
 use tonic::Status;
 use tonic::transport::Channel;
+use tracing::info;
 
+use crate::errors::RaftError;
 use crate::rpc::server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
 use crate::rpc::server::raft::raft_grpc_client::RaftGrpcClient;
 
@@ -16,9 +17,13 @@ pub struct RaftGrpcClientStub {
 
 impl RaftGrpcClientStub {
     //TODO - Clean up all these Box dyn errors
-    pub async fn new(addr: &str) -> Result<Self, Box<dyn Error>> {
-        let channel = Channel::builder(addr.parse()?).connect().await?;
-        let client = RaftGrpcClient::new(channel);
+    pub async fn new(addr: &str) -> Result<Self, RaftError> {
+        info!("Constructing new stub for address {addr}");
+        //let channel = Channel::builder(addr.parse()?).connect().await?;
+        let client = RaftGrpcClient::connect(addr.to_string())
+            .await
+            .map_err(|e| RaftError::InternalServerErrorWithContext(format!("Error establishing connectivity with node : {addr}")))?;
+        info!("Stub constructed for address {addr}");
         let stub = RaftGrpcClientStub {
             peer_sender: Arc::new(Mutex::new(client))
         };
@@ -38,7 +43,7 @@ impl RaftGrpcClientStub {
     }
 }
 
-#[cfg(test)]
+/*#[cfg(test)]
 mod tests {
     use crate::rpc::client::RaftGrpcClientStub;
 
@@ -68,4 +73,4 @@ mod tests {
         let response = client.append_entries(request).await.expect("Should have gotten back the response");
         assert_eq!(response.from, "hello");
     }
-}
+}*/

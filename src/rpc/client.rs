@@ -3,41 +3,41 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tonic::Status;
 use tonic::transport::Channel;
-use tracing::info;
+use tracing::{debug, info};
 
-use crate::errors::RaftError;
+use crate::errors::{RaftError, RaftResult};
 use crate::rpc::server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
 use crate::rpc::server::raft::raft_grpc_client::RaftGrpcClient;
 
 pub struct RaftGrpcClientStub {
     //Need to protect the grpc client due to concurrent access within the node for various messages
-    peer_sender: Arc<Mutex<RaftGrpcClient<Channel>>>,
+    grpc_peer_sender: Arc<Mutex<RaftGrpcClient<Channel>>>,
 }
 
 
 impl RaftGrpcClientStub {
-    //TODO - Clean up all these Box dyn errors
-    pub async fn new(addr: &str) -> Result<Self, RaftError> {
-        info!("Constructing new stub for address {addr}");
+    //TODO - Clean up all these Result to RaftResult
+    pub async fn new(addr: &str) -> RaftResult<Self> {
+        debug!("Constructing new stub for address {addr}");
         //let channel = Channel::builder(addr.parse()?).connect().await?;
         let client = RaftGrpcClient::connect(addr.to_string())
             .await
             .map_err(|e| RaftError::InternalServerErrorWithContext(format!("Error establishing connectivity with node : {addr}")))?;
-        info!("Stub constructed for address {addr}");
+        debug!("Stub constructed for address {addr}");
         let stub = RaftGrpcClientStub {
-            peer_sender: Arc::new(Mutex::new(client))
+            grpc_peer_sender: Arc::new(Mutex::new(client))
         };
         Ok(stub)
     }
 
     pub async fn append_entries(&self, request: AppendEntriesRequest) -> Result<AppendEntriesResponse, Status> {
-        let mut client = self.peer_sender.lock().await;
+        let mut client = self.grpc_peer_sender.lock().await;
         let response = client.append_entries(request).await?;
         Ok(response.into_inner())
     }
 
     pub async fn request_vote(&self, request: RequestVoteRequest) -> Result<RequestVoteResponse, Status> {
-        let mut client = self.peer_sender.lock().await;
+        let mut client = self.grpc_peer_sender.lock().await;
         let response = client.request_vote(request).await?;
         Ok(response.into_inner())
     }

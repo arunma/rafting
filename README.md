@@ -41,7 +41,14 @@ cargo run
 
 ## Usage
 
-TODO
+WIP (currently being tested only with two nodes) - Need to source this info from config
+
+### Running a two-node cluster locally : (node1, node2)
+
+```bash
+cargo watch -x build -x check -x "run -- node1 [::1]:7070 node2 http://[::1]:8080"
+cargo watch -x build -x check -x "run -- node2 [::1]:8080 node1 http://[::1]:7070"
+```
 
 ## Contributing
 

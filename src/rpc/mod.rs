@@ -6,14 +6,16 @@ pub mod client;
 pub mod peer;
 
 
-#[derive(Debug)]
-pub enum RaftRequest {
-    AppendEntries(AppendEntriesRequest),
-    RequestVote(RequestVoteRequest),
+#[derive(Debug, Clone)]
+pub enum RaftEvent {
+    PeerVotesRequestEvent(RequestVoteRequest),
+    PeerAppendEntriesRequestEvent(AppendEntriesRequest),
+    PeerVotesResponseEvent(Vec<RequestVoteResponse>),
+    PeerAppendEntriesResponseEvent(Vec<AppendEntriesResponse>),
+    //Individual request responses
+    RequestVoteRequestEvent(RequestVoteRequest),
+    AppendEntriesRequestEvent(AppendEntriesRequest),
+    RequestVoteResponseEvent(RequestVoteResponse),
+    AppendEntriesResponseEvent(AppendEntriesResponse),
 }
 
-#[derive(Debug)]
-pub enum RaftResponse {
-    AppendEntries(AppendEntriesResponse),
-    RequestVote(RequestVoteResponse),
-}

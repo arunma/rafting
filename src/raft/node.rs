@@ -1,6 +1,5 @@
 use anyhow::anyhow;
 use rand::Rng;
-use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 
@@ -15,9 +14,9 @@ pub struct RaftNode {
     //TODO Expose this as a function
     pub id: String,
     peers: Vec<String>,
+    //log: Store,
     current_term: u32,
     voted_for: Option<String>,
-    //log: Vec<LogEntry>,
     commit_index: i64,
     last_applied_index: i64,
     // next_index: Vec<i64>,
@@ -66,6 +65,7 @@ impl RaftNode {
         Self {
             id,
             peers,
+            //store: Store::new(),
             current_term: 0,
             voted_for: None,
             commit_index: 0,
@@ -78,17 +78,18 @@ impl RaftNode {
         }
     }
 
-    pub fn tick(mut self) -> Result<RaftNode, RaftError> {
+    pub fn tick(self) -> Result<RaftNode, RaftError> {
         let mut node = self;
         node.elapsed_ticks_since_last_heartbeat += 1;
         if node.state == Leader {
+            // As a leader, send heartbeats to all peers
             if node.elapsed_ticks_since_last_heartbeat >= HEARTBEAT_TICKS {
                 node.elapsed_ticks_since_last_heartbeat = 0;
-                &node
+                let _ = &node
                     .node_to_peers_tx
                     .send(RaftEvent::PeerAppendEntriesRequestEvent(AppendEntriesRequest {
                         term: node.current_term,
-                        leader_id: (&node.id).to_string(),
+                        leader_id: node.id.to_string(),
                         prev_log_index: 0,
                         prev_log_term: 0,
                         entries: vec![],
@@ -97,6 +98,7 @@ impl RaftNode {
             }
             return Ok(node);
         } else {
+            // As a follower, if we don't hear from the leader within the election timeout, then become a candidate
             info!("Current elapsed ticks for node: {} is {}. Election timeout is : {}", node.id, node.elapsed_ticks_since_last_heartbeat, node.election_timeout_ticks);
             if node.elapsed_ticks_since_last_heartbeat >= node.election_timeout_ticks {
                 let node = node.become_candidate()?; //TODO - This needs to start election
@@ -107,25 +109,25 @@ impl RaftNode {
     }
 
     pub fn step(
-        mut self,
+        self,
         event: (RaftEvent, Option<oneshot::Sender<RaftResult<RaftEvent>>>),
     ) -> RaftResult<RaftNode> {
         //Process requests and responses
-        let node_id = (&self.id).to_string();
+        let node_id = self.id.to_string();
         let mut node = self;
         match event {
             (RaftEvent::PeerVotesRequestEvent(req), Some(sender)) => {
                 //As a candidate or a follower, if we get a RequestVoteRequest and if the incoming term is more than the current term,
                 //then vote, become a follower and bail out.
                 if node.current_term < req.term {
-                    let _x = sender.send(Ok(RequestVoteResponseEvent(RequestVoteResponse {
+                    let _ = sender.send(Ok(RequestVoteResponseEvent(RequestVoteResponse {
                         from: node_id,
                         term: req.term,
                         vote_granted: true,
                     })));
                     node = node.become_follower(req.term)?;
                 } else {
-                    let _x = sender.send(Ok(RequestVoteResponseEvent(RequestVoteResponse {
+                    let _ = sender.send(Ok(RequestVoteResponseEvent(RequestVoteResponse {
                         from: node_id,
                         term: req.term,
                         vote_granted: false,
@@ -138,7 +140,7 @@ impl RaftNode {
                 info!("Processing AppendEntriesRequestEvent from {}", req.leader_id);
                 //FIXME - Ignore log entries for now
                 node.elapsed_ticks_since_last_heartbeat = 0;
-                let _x = sender.send(Ok(AppendEntriesResponseEvent(AppendEntriesResponse {
+                let _ = sender.send(Ok(AppendEntriesResponseEvent(AppendEntriesResponse {
                     from: node.id.to_string(),
                     term: req.term,
                     success: true,
@@ -181,7 +183,7 @@ impl RaftNode {
         Ok(node)
     }
 
-    pub fn become_candidate(mut self) -> RaftResult<RaftNode> {
+    pub fn become_candidate(self) -> RaftResult<RaftNode> {
         let mut node = self;
         node.state = NodeState::Candidate;
         node.current_term += 1;
@@ -195,22 +197,22 @@ impl RaftNode {
             last_log_index: 0, //TODO - Fill from logs later
             last_log_term: 0,
         };
-        &node
+        let _ = &node
             .node_to_peers_tx
             .send(RaftEvent::PeerVotesRequestEvent(request_vote))
             .map_err(|e| anyhow!(format!("Unable to send request vote to peers: {:?}", e)))?;
         Ok(node)
     }
 
-    pub fn become_leader(mut self) -> RaftResult<RaftNode> {
+    pub fn become_leader(self) -> RaftResult<RaftNode> {
         let mut node = self;
         info!("Node {} is promoted to be the LEADER", node.id);
         node.state = NodeState::Leader;
-        &node
+        let _ = &node
             .node_to_peers_tx
             .send(RaftEvent::PeerAppendEntriesRequestEvent(AppendEntriesRequest {
                 term: node.current_term,
-                leader_id: (&node.id).to_string(),
+                leader_id: node.id.to_string(),
                 prev_log_index: 0,
                 prev_log_term: 0,
                 entries: vec![],
@@ -219,7 +221,7 @@ impl RaftNode {
         Ok(node)
     }
 
-    pub fn become_follower(mut self, term: u32) -> RaftResult<RaftNode> {
+    pub fn become_follower(self, term: u32) -> RaftResult<RaftNode> {
         let mut node = self;
         info!("Node {} is becoming a FOLLOWER", node.id);
         node.state = NodeState::Follower;
@@ -240,11 +242,11 @@ mod tests {
     use crate::raft::node::{NodeState, RaftNode};
     use crate::rpc::server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
     use crate::rpc::RaftEvent;
-    use crate::rpc::RaftEvent::{AppendEntriesResponseEvent, PeerAppendEntriesResponseEvent, PeerVotesRequestEvent, PeerVotesResponseEvent};
+    use crate::rpc::RaftEvent::{PeerAppendEntriesResponseEvent, PeerVotesRequestEvent, PeerVotesResponseEvent, RequestVoteResponseEvent};
 
     #[test]
     fn test_follower_to_candidate() -> Result<(), RaftError> {
-        let (mut node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
+        let (node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
 
         let mut node = RaftNode {
             id: "node1".to_string(),
@@ -259,7 +261,7 @@ mod tests {
             election_timeout_ticks: 0,
         };
         let timeout = node.election_timeout_ticks;
-        for i in 0..timeout {
+        for _ in 0..timeout {
             node = node.tick()?;
         }
         let node = node.tick()?;
@@ -290,7 +292,7 @@ mod tests {
 
     #[test]
     fn test_candidate_to_leader() -> Result<(), RaftError> {
-        let (mut node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
+        let (node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node1".to_string();
         let mut node = RaftNode {
             id: node_id.clone(),
@@ -348,7 +350,7 @@ mod tests {
 
     #[test]
     fn test_leader_to_follower_if_votes_not_granted() -> Result<(), RaftError> {
-        let (mut node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
+        let (node_to_peers_tx, _peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node1".to_string();
         let mut node = RaftNode {
             id: node_id.clone(),
@@ -388,7 +390,7 @@ mod tests {
 
     #[test]
     fn test_leader_to_follower_if_append_entries_response_has_greater_term() -> Result<(), RaftError> {
-        let (mut node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
+        let (node_to_peers_tx, _peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node1".to_string();
         let mut node = RaftNode {
             id: node_id.clone(),
@@ -427,9 +429,9 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_follower_to_not_grant_vote_if_req_term_is_lower() -> Result<(), RaftError> {
-        let (mut node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
+    #[tokio::test]
+    async fn test_follower_to_not_grant_vote_if_req_term_is_lower() -> Result<(), RaftError> {
+        let (node_to_peers_tx, _peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node1".to_string();
         let mut node = RaftNode {
             id: node_id.clone(),
@@ -451,8 +453,23 @@ mod tests {
             last_log_term: 0,
         });
 
-        let (mut tx, mut rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         node = node.step((request_vote, Some(tx)))?;
+
+        if let Ok(response) = rx.await {
+            if let Ok(RequestVoteResponseEvent(response)) = response {
+                assert_eq!(
+                    response,
+                    RequestVoteResponse {
+                        from: "node1".to_string(),
+                        term: 1,
+                        vote_granted: false,
+                    }
+                );
+            } else {
+                panic!("Unexpected failure in testcase")
+            }
+        }
         //Assert node state
         assert_eq!(node.state, NodeState::Follower);
         assert_eq!(node.current_term, 2);

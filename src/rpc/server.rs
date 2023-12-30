@@ -1,7 +1,5 @@
-use std::error::Error;
 use std::net::SocketAddr;
 
-use anyhow::Context;
 use tokio::sync::{mpsc, oneshot};
 use tonic::{Request, Response, Status};
 use tonic::transport::Server;

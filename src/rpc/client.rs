@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tonic::Status;
 use tonic::transport::Channel;
-use tracing::{debug, info};
+use tracing::{debug};
 
 use crate::errors::{RaftError, RaftResult};
 use crate::rpc::server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
@@ -22,7 +22,7 @@ impl RaftGrpcClientStub {
         //let channel = Channel::builder(addr.parse()?).connect().await?;
         let client = RaftGrpcClient::connect(addr.to_string())
             .await
-            .map_err(|e| RaftError::InternalServerErrorWithContext(format!("Error establishing connectivity with node : {addr}")))?;
+            .map_err(|_e| RaftError::InternalServerErrorWithContext(format!("Error establishing connectivity with node : {addr}")))?;
         debug!("Stub constructed for address {addr}");
         let stub = RaftGrpcClientStub {
             grpc_peer_sender: Arc::new(Mutex::new(client))

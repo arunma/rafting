@@ -2,14 +2,11 @@ use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::net::SocketAddr;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use tracing::info;
 use tracing_subscriber::util::SubscriberInitExt;
 
 use rafting::raft::server::RaftServer;
-use rafting::rpc::peer::PeerNetwork;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -23,11 +20,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let addr = &args[2];
     let peer_id = &args[3];
     let peer_addr = &args[4];
-
-    //let peer_network = Arc::new(Mutex::new(PeerNetwork::default()));
     let peers = HashMap::from([(peer_id.to_string(), peer_addr.to_string())]);
     let address: SocketAddr = addr.as_str().parse().expect("Invalid address");
-    //let raft_server = RaftServer::new(peer_network);
     RaftServer::start_server(id, address, peers).await?;
     Ok(())
 }

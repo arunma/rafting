@@ -4,7 +4,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot::Sender;
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tracing::{error, info};
@@ -21,11 +20,6 @@ pub struct RaftServer {
 }
 
 impl RaftServer {
-    /*    pub fn new(peer_network: Arc<Mutex<PeerNetwork>>) -> Self {
-        Self {
-            peer_network
-        }
-    }*/
     //TODO - Add id and peers from config
     pub async fn start_server(
         node_id: &str,
@@ -34,7 +28,7 @@ impl RaftServer {
     ) -> Result<(), Box<dyn Error>> {
         info!("Initializing services...");
 
-        ///CHANNELS
+        //CHANNELS
         //Establishes connectivity between GRPC server and the Raft Node
         let (server_to_node_tx, node_from_server_rx) =
             mpsc::unbounded_channel::<(RaftEvent, Option<Sender<RaftResult<RaftEvent>>>)>();
@@ -45,17 +39,16 @@ impl RaftServer {
         let (node_to_peers_tx, peers_from_node_rx) = mpsc::unbounded_channel();
 
         //GRPC Server initialization
-        let grpc_server = RaftGrpcServerStub::new(server_to_node_tx.clone());
+        let grpc_server = RaftGrpcServerStub::new(server_to_node_tx);
         let grpc_handle = tokio::spawn(grpc_server.run(address));
 
         let peer_network = Arc::new(Mutex::new(PeerNetwork::new(
             node_id.to_string(),
-            server_to_node_tx,
         )));
         let peer_clone = peers.clone();
         //Initializing peer network
         let peer_handle = {
-            let mut peer_network = peer_network.clone();
+            let peer_network = peer_network.clone();
             tokio::spawn(async move {
                 let mut peer_network = peer_network.lock().await;
                 peer_network.wait_for_peers(peers).await
@@ -113,7 +106,7 @@ impl RaftServer {
                             let responses = peer_network
                                 .lock()
                                 .await
-                                .append_entries(req)
+                                .send_heartbeats(req)
                                 .await?;
                             let response_event = RaftEvent::PeerAppendEntriesResponseEvent(responses);
                             node = node.step((response_event, None))?;

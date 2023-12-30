@@ -1,33 +1,28 @@
 use std::collections::HashMap;
 use std::sync::{Arc};
-use tokio::sync::mpsc::UnboundedSender;
 
-use tokio::sync::{Mutex, MutexGuard, oneshot};
+use tokio::sync::{Mutex};
 use tokio::time::sleep;
-use tonic::Status;
 use tracing::{debug, error, info};
 
-use crate::errors::{RaftError, RaftResult};
+use crate::errors::{RaftResult};
 use crate::rpc::client::RaftGrpcClientStub;
-use crate::rpc::RaftEvent;
 use crate::rpc::server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
 
 #[derive(Clone)]
 pub struct PeerNetwork {
     node_id: String,
     peers: Arc<Mutex<HashMap<String, RaftGrpcClientStub>>>,
-    server_to_node_tx: UnboundedSender<(RaftEvent, Option<oneshot::Sender<RaftResult<RaftEvent>>>)>,
 }
 
 impl PeerNetwork {
-    pub fn new(node_id: String, server_to_node_tx: UnboundedSender<(RaftEvent, Option<oneshot::Sender<RaftResult<RaftEvent>>>)>) -> Self {
+    pub fn new(node_id: String) -> Self {
         Self {
             node_id,
             peers: Arc::new(Default::default()),
-            server_to_node_tx,
         }
     }
-    pub async fn append_entries(&self, request: AppendEntriesRequest) -> RaftResult<Vec<AppendEntriesResponse>> {
+    pub async fn send_heartbeats(&self, request: AppendEntriesRequest) -> RaftResult<Vec<AppendEntriesResponse>> {
         let peers = self.peers.lock().await;
         let mut handles = Vec::with_capacity(peers.len());
         for (_id, client) in peers.iter() {
@@ -40,7 +35,6 @@ impl PeerNetwork {
                 Ok(resp) => {
                     info!("Received AppendEntriesResponse on node_id: {} -> :{resp:?}", self.node_id);
                     Some(resp)
-                    //self.server_to_node_tx.send((RaftEvent::RequestVoteResponseEvent(resp), None)).expect("Should be able to forward message received from peer to node");
                 }
                 Err(e) => {
                     error!("Error received at {} while sending AppendEntry to the peers. Tonic error is {:?}", self.node_id, e);
@@ -82,7 +76,7 @@ impl PeerNetwork {
             let mut peer_clients = self.peers.lock().await;
             for (id, addr) in peers.iter() {
                 info!("Establishing connectivity with peer: {id} at address {addr}");
-                let grpc_client_result = RaftGrpcClientStub::new(&addr).await;
+                let grpc_client_result = RaftGrpcClientStub::new(addr).await;
                 match grpc_client_result {
                     Ok(grpc_client) => {
                         info!("Adding node with {id} and addr {addr} as peer");
@@ -104,9 +98,6 @@ impl PeerNetwork {
         }
     }
 }
-
-
-
 
 
 

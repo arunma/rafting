@@ -14,13 +14,12 @@ use raft::raft_grpc_server::RaftGrpcServer;
 use crate::errors::{RaftError, RaftResult};
 use crate::errors::RaftError::InternalServerErrorWithContext;
 use crate::rpc::{RaftEvent};
-use crate::rpc::RaftEvent::{AppendEntriesRequestEvent, PeerAppendEntriesResponseEvent, PeerVotesRequestEvent, RequestVoteRequestEvent};
+use crate::rpc::RaftEvent::{PeerAppendEntriesRequestEvent, PeerVotesRequestEvent};
 use crate::rpc::server::raft::{AppendEntriesRequest, RequestVoteRequest};
 
 pub mod raft {
     tonic::include_proto!("raft");
 }
-
 
 #[derive(Debug)]
 pub struct RaftGrpcServerStub {
@@ -52,7 +51,7 @@ impl RaftGrpc for RaftGrpcServerStub {
     async fn append_entries(&self, request: Request<AppendEntriesRequest>) -> Result<Response<AppendEntriesResponse>, Status> {
         info!("Request received is {:?}", request);
         let (node_to_server_tx, server_from_node_rx) = tokio::sync::oneshot::channel();
-        self.server_to_node_tx.send((AppendEntriesRequestEvent(request.into_inner()), Some(node_to_server_tx))).expect("Should be able to forward the request to node");
+        self.server_to_node_tx.send((PeerAppendEntriesRequestEvent(request.into_inner()), Some(node_to_server_tx))).expect("Should be able to forward the request to node");
         match server_from_node_rx.await {
             Ok(Ok(RaftEvent::AppendEntriesResponseEvent(response))) => {
                 Ok(Response::new(response))
@@ -70,7 +69,7 @@ impl RaftGrpc for RaftGrpcServerStub {
     async fn request_vote(&self, request: Request<RequestVoteRequest>) -> Result<Response<RequestVoteResponse>, Status> {
         info!("Request received is {:?}", request);
         let (node_to_server_tx, server_from_node_rx) = oneshot::channel();
-        self.server_to_node_tx.send((RequestVoteRequestEvent(request.into_inner()), Some(node_to_server_tx))).expect("Should be able to forward the request to node");
+        self.server_to_node_tx.send((PeerVotesRequestEvent(request.into_inner()), Some(node_to_server_tx))).expect("Should be able to forward the request to node");
         match server_from_node_rx.await {
             Ok(Ok(RaftEvent::RequestVoteResponseEvent(response))) => {
                 Ok(Response::new(response))

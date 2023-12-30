@@ -42,8 +42,6 @@ impl RaftServer {
           The alternative would be to make PeerNetwork available in the raft `node`.
           The key advantage that we could derive by this indirection is the ease of testing, since we will essentially be dealing only with channels in the node.
         */
-
-        //let (peers_to_node_tx, node_from_peers_rx) = mpsc::unbounded_channel();
         let (node_to_peers_tx, peers_from_node_rx) = mpsc::unbounded_channel();
 
         //GRPC Server initialization
@@ -104,6 +102,10 @@ impl RaftServer {
             tokio::select! {
                 //Every tick
                 _ = ticker.tick() => node = node.tick()?,
+                /*
+                The following messages are received from Node and is meant for the peers in the cluster.
+                So, we use the client stubs in the PeerNetwork to send the messages to the peers.
+                 */
                 Some(event) = peers_from_node_rx.recv() => {
                     match event.clone() {
                         RaftEvent::PeerAppendEntriesRequestEvent(req) => {
@@ -114,15 +116,7 @@ impl RaftServer {
                                 .append_entries(req)
                                 .await?;
                             let response_event = RaftEvent::PeerAppendEntriesResponseEvent(responses);
-                            node = node.step((response_event, None)).await?;
-                        },
-                        RaftEvent::PeerVotesResponseEvent(_) => todo!(),
-                        RaftEvent::PeerAppendEntriesResponseEvent(_) => todo!(),
-                        RaftEvent::RequestVoteRequestEvent(_) => todo!(),
-                        RaftEvent::RequestVoteResponseEvent(_) => todo!(),
-                        RaftEvent::AppendEntriesResponseEvent(_) => todo!(),
-                        RaftEvent::AppendEntriesRequestEvent(req) => {
-                            info!("Append entry sent to peer: {req:?}");
+                            node = node.step((response_event, None))?;
                         },
                         RaftEvent::PeerVotesRequestEvent(req) => {
                             info!("Requesting peer votes from {} using request: {req:?}", node.id);
@@ -132,13 +126,16 @@ impl RaftServer {
                                 .request_vote(req)
                                 .await?;
                             let response_event = RaftEvent::PeerVotesResponseEvent(responses);
-                            node = node.step((response_event, None)).await?;
+                            node = node.step((response_event, None))?;
                         },
-
+                        _ => {
+                            error!("Some unexpected match pattern came up in node_from_server_rx stream");
+                            return Err(RaftError::InternalServerErrorWithContext("Some unexpected match pattern came up in node_from_server_rx stream".to_string()))
+                        }
                     }
-                                    },
+                },
                 Some(event) = node_from_server_rx.recv() => {
-                    node = node.step(event).await?;
+                    node = node.step(event)?;
                 }
             }
         }

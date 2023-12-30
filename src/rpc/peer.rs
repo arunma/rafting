@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc};
 use tokio::sync::mpsc::UnboundedSender;
 
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::{Mutex, MutexGuard, oneshot};
 use tokio::time::sleep;
 use tonic::Status;
 use tracing::{debug, error, info};
@@ -64,7 +64,6 @@ impl PeerNetwork {
                 Ok(resp) => {
                     info!("Received RequestVoteResponse on node_id: {} -> :{resp:?}", self.node_id);
                     Some(resp)
-                    //self.server_to_node_tx.send((RaftEvent::RequestVoteResponseEvent(resp), None)).expect("Should be able to forward message received from peer to node");
                 }
                 Err(e) => {
                     error!("Error received at {} while sending RequestVote to the peers. Tonic error is {:?}", self.node_id, e);
@@ -76,27 +75,12 @@ impl PeerNetwork {
     }
 
 
-    pub async fn wait_for_peers(&mut self, peers: HashMap<String, String>) -> Result<(), RaftError> {
+    pub async fn wait_for_peers(&mut self, peers: HashMap<String, String>) -> RaftResult<()> {
         //TODO - Optimize for clients whose link has already been established.
         loop {
             info!("Connecting to peers");
             let mut peer_clients = self.peers.lock().await;
-            for (id, addr) in peers.iter() {
-                info!("Establishing connectivity with peer: {id} at address {addr}");
-                let grpc_client_result = RaftGrpcClientStub::new(&addr).await;
-                //let grpc_client_result = Err(RaftError::ApplicationStartup("Startup error".to_string()));
-                match grpc_client_result {
-                    Ok(grpc_client) => {
-                        info!("Adding node with {id} and addr {addr} as peer");
-                        peer_clients.insert(id.to_string(), grpc_client);
-                    }
-                    Err(e) => {
-                        info!("Not all peers have joined. Retrying in 3 seconds. Last attempted error for connecting to {id} with {addr} is {}", e.to_string());
-                        break;
-                    }
-                }
-            }
-            debug!("Initialized peer clients are now: {}", peer_clients.len());
+            self.initialize_peer_clients(&peers, peer_clients).await?;
             if peer_clients.len() == peers.len() {
                 debug!("Peer map is : {:?}", peers);
                 debug!("Peer handle count is equal to peers count. Breaking. Peers are : {:?}", peer_clients.keys().collect::<Vec<&String>>());
@@ -105,19 +89,28 @@ impl PeerNetwork {
             sleep(tokio::time::Duration::from_secs(5)).await;
         }
     }
+    pub async fn initialize_peer_clients(&mut self, peers: &HashMap<String, String>, mut peer_clients: MutexGuard<HashMap<String, RaftGrpcClientStub>>) -> RaftResult<()> {
+        for (id, addr) in peers.iter() {
+            info!("Establishing connectivity with peer: {id} at address {addr}");
+            let grpc_client_result = RaftGrpcClientStub::new(&addr).await;
+            match grpc_client_result {
+                Ok(grpc_client) => {
+                    info!("Adding node with {id} and addr {addr} as peer");
+                    peer_clients.insert(id.to_string(), grpc_client);
+                }
+                Err(e) => {
+                    info!("Not all peers have joined. Retrying in 3 seconds. Last attempted error for connecting to {id} with {addr} is {}", e.to_string());
+                    break;
+                }
+            }
+        }
+        debug!("Initialized peer clients are now: {}", peer_clients.len());
+        Ok(())
+    }
 }
 
 
-/*   pub async fn initialize_peer_clients(&mut self, peers: &HashMap<String, String>) -> Result<(), Box<dyn Error>> {
-       let mut peer_clients = self.peers.lock().await;
-       for (id, addr) in peers.iter() {
-           info!("Establishing connectivity with peer: {id} at address {addr}");
-           let grpc_client = RaftGrpcClientStub::new(&addr).await?;
-           peer_clients.insert(id.to_string(), grpc_client);
-       }
-       info!("Initialized peer clients are now: {}", peer_clients.len());
-       Ok(())
-   }*/
+
 
 
 

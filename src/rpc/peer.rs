@@ -80,7 +80,21 @@ impl PeerNetwork {
         loop {
             info!("Connecting to peers");
             let mut peer_clients = self.peers.lock().await;
-            self.initialize_peer_clients(&peers, peer_clients).await?;
+            for (id, addr) in peers.iter() {
+                info!("Establishing connectivity with peer: {id} at address {addr}");
+                let grpc_client_result = RaftGrpcClientStub::new(&addr).await;
+                match grpc_client_result {
+                    Ok(grpc_client) => {
+                        info!("Adding node with {id} and addr {addr} as peer");
+                        peer_clients.insert(id.to_string(), grpc_client);
+                    }
+                    Err(e) => {
+                        info!("Not all peers have joined. Retrying in 3 seconds. Last attempted error for connecting to {id} with {addr} is {}", e.to_string());
+                        break;
+                    }
+                }
+            }
+            debug!("Initialized peer clients are now: {}", peer_clients.len());
             if peer_clients.len() == peers.len() {
                 debug!("Peer map is : {:?}", peers);
                 debug!("Peer handle count is equal to peers count. Breaking. Peers are : {:?}", peer_clients.keys().collect::<Vec<&String>>());
@@ -88,24 +102,6 @@ impl PeerNetwork {
             }
             sleep(tokio::time::Duration::from_secs(5)).await;
         }
-    }
-    pub async fn initialize_peer_clients(&mut self, peers: &HashMap<String, String>, mut peer_clients: MutexGuard<HashMap<String, RaftGrpcClientStub>>) -> RaftResult<()> {
-        for (id, addr) in peers.iter() {
-            info!("Establishing connectivity with peer: {id} at address {addr}");
-            let grpc_client_result = RaftGrpcClientStub::new(&addr).await;
-            match grpc_client_result {
-                Ok(grpc_client) => {
-                    info!("Adding node with {id} and addr {addr} as peer");
-                    peer_clients.insert(id.to_string(), grpc_client);
-                }
-                Err(e) => {
-                    info!("Not all peers have joined. Retrying in 3 seconds. Last attempted error for connecting to {id} with {addr} is {}", e.to_string());
-                    break;
-                }
-            }
-        }
-        debug!("Initialized peer clients are now: {}", peer_clients.len());
-        Ok(())
     }
 }
 

@@ -33,7 +33,7 @@ impl PeerNetwork {
         let responses = joined.into_iter().filter_map(|result| {
             match result {
                 Ok(resp) => {
-                    info!("Received AppendEntriesResponse on node_id: {} -> :{resp:?}", self.node_id);
+                    debug!("Received AppendEntriesResponse on node_id: {} -> :{resp:?}", self.node_id);
                     Some(resp)
                 }
                 Err(e) => {
@@ -56,7 +56,7 @@ impl PeerNetwork {
         let responses = joined.into_iter().filter_map(|result| {
             match result {
                 Ok(resp) => {
-                    info!("Received RequestVoteResponse on node_id: {} -> :{resp:?}", self.node_id);
+                    debug!("Received RequestVoteResponse on node_id: {} -> :{resp:?}", self.node_id);
                     Some(resp)
                 }
                 Err(e) => {

@@ -13,7 +13,7 @@ use crate::errors::{RaftError, RaftResult};
 use crate::errors::RaftError::InternalServerErrorWithContext;
 use crate::rpc::{RaftEvent};
 use crate::rpc::RaftEvent::{PeerAppendEntriesRequestEvent, PeerVotesRequestEvent};
-use crate::rpc::server::raft::{AppendEntriesRequest, RequestVoteRequest};
+use crate::rpc::rpc_server::raft::{AppendEntriesRequest, RequestVoteRequest};
 
 pub mod raft {
     tonic::include_proto!("raft");

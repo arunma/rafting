@@ -6,18 +6,18 @@ use std::time::Duration;
 
 use tokio::sync::oneshot::Sender;
 use tokio::sync::{mpsc, oneshot, Mutex};
-use tracing::{error, info};
+use tokio::sync::mpsc::UnboundedReceiver;
+use tracing::{debug, error, info};
 
 use crate::errors::{RaftError, RaftResult};
-use crate::raft::node::RaftNode;
+use crate::raft::raft_node::RaftNode;
 use crate::raft::TICK_INTERVAL_MS;
-use crate::rpc::peer::PeerNetwork;
-use crate::rpc::server::RaftGrpcServerStub;
+use crate::rpc::rpc_peer_network::PeerNetwork;
+use crate::rpc::rpc_server::RaftGrpcServerStub;
 use crate::rpc::RaftEvent;
+use crate::web::ClientEvent;
 
-pub struct RaftServer {
-    //peer_network: Arc<Mutex<PeerNetwork>>,
-}
+pub struct RaftServer {}
 
 impl RaftServer {
     //TODO - Add id and peers from config
@@ -25,8 +25,9 @@ impl RaftServer {
         node_id: &str,
         address: SocketAddr,
         peers: HashMap<String, String>,
+        server_from_client_rx: UnboundedReceiver<(ClientEvent, oneshot::Sender<ClientEvent>)>,
     ) -> Result<(), Box<dyn Error>> {
-        info!("Initializing services...");
+        info!("Initializing grpc services on {node_id} at {address:?}...");
 
         //CHANNELS
         //Establishes connectivity between GRPC server and the Raft Node
@@ -71,7 +72,7 @@ impl RaftServer {
                 .await
         });
 
-        info!("Starting server at {:?}", address);
+        debug!("Starting server at {:?}", address);
         let result = tokio::try_join!(node_handle, grpc_handle, peer_handle);
 
         if let Err(e) = result {

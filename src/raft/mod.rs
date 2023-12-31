@@ -1,5 +1,6 @@
-pub mod node;
-pub mod server;
+pub mod raft_node;
+pub mod raft_server;
+mod raft_log;
 
 //TODO - Need to source this from a config
 //FIXME: Really slowing down for dev purposes

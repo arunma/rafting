@@ -1,9 +1,9 @@
-use crate::rpc::server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
+use crate::rpc::rpc_server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
 
-pub mod server;
+pub mod rpc_server;
 
-pub mod client;
-pub mod peer;
+pub mod rpc_client;
+pub mod rpc_peer_network;
 
 
 #[derive(Debug, Clone)]

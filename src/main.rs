@@ -2,11 +2,14 @@ use std::collections::HashMap;
 use std::env;
 use std::error::Error;
 use std::net::SocketAddr;
+use tokio::sync::{mpsc, oneshot};
 
 use tracing::info;
 use tracing_subscriber::util::SubscriberInitExt;
 
-use rafting::raft::server::RaftServer;
+use rafting::raft::raft_server::RaftServer;
+use rafting::web::ClientEvent;
+use rafting::web::web_server::WebServer;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -17,12 +20,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
     //let address = "[::1]:7070".parse()?;
     info!("Args: {:?}", &args);
     let id = &args[1];
-    let addr = &args[2];
-    let peer_id = &args[3];
-    let peer_addr = &args[4];
+    let grpc_addr = &args[2];
+    let web_addr = &args[3];
+    let peer_id = &args[4];
+    let peer_addr = &args[5];
     let peers = HashMap::from([(peer_id.to_string(), peer_addr.to_string())]);
-    let address: SocketAddr = addr.as_str().parse().expect("Invalid address");
-    RaftServer::start_server(id, address, peers).await?;
+    let grpc_address: SocketAddr = grpc_addr.as_str().parse().expect("Invalid address");
+    let web_address: SocketAddr = web_addr.as_str().parse().expect("Invalid address");
+
+    let (client_to_server_tx, server_from_client_rx) = mpsc::unbounded_channel::<(ClientEvent, oneshot::Sender<ClientEvent>)>();
+    let raft_server_handle = RaftServer::start_server(id, grpc_address, peers, server_from_client_rx);
+    let web_server_handle = WebServer::start_server(id, web_address, client_to_server_tx);
+
+    tokio::try_join!(raft_server_handle, web_server_handle)?;
+
     Ok(())
 }
 

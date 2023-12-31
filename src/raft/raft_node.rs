@@ -4,9 +4,10 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{error, info};
 
 use crate::errors::{RaftError, RaftResult};
-use crate::raft::node::NodeState::Leader;
+use crate::raft::raft_node::NodeState::Leader;
 use crate::raft::{ELECTION_MAX_TIMEOUT_TICKS, ELECTION_MIN_TIMEOUT_TICKS, HEARTBEAT_TICKS};
-use crate::rpc::server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
+use crate::raft::raft_log::RaftLog;
+use crate::rpc::rpc_server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
 use crate::rpc::RaftEvent;
 use crate::rpc::RaftEvent::{AppendEntriesResponseEvent, RequestVoteResponseEvent};
 
@@ -14,13 +15,13 @@ pub struct RaftNode {
     //TODO Expose this as a function
     pub id: String,
     peers: Vec<String>,
-    //log: Store,
+    log: RaftLog,
     current_term: u32,
     voted_for: Option<String>,
-    commit_index: i64,
-    last_applied_index: i64,
-    // next_index: Vec<i64>,
-    // match_index: Vec<i64>
+    commit_index: u64,
+    last_applied_index: u64,
+    // next_index: Vec<u64>,
+    // match_index: Vec<u64>
     state: NodeState,
     node_to_peers_tx: mpsc::UnboundedSender<RaftEvent>,
     elapsed_ticks_since_last_heartbeat: u64,
@@ -34,28 +35,6 @@ pub enum NodeState {
     Leader,
 }
 
-//TODO - Let's come to this later
-//Reference: https://hoverbear.org/blog/rust-state-machine-pattern/
-/*
-struct Leader {}
-
-struct Candidate {}
-
-struct Follower {}
-
-impl RaftNode<Leader> {
-    fn new() -> Self {
-        RaftNode {
-            id: "",
-            current_term: 0,
-            voted_for: "",
-            commit_index: 0,
-            last_applied_index: 0,
-            state: Leader,
-        }
-    }
-}*/
-
 impl RaftNode {
     pub fn new(
         id: String,
@@ -65,7 +44,7 @@ impl RaftNode {
         Self {
             id,
             peers,
-            //store: Store::new(),
+            log: RaftLog::new(),
             current_term: 0,
             voted_for: None,
             commit_index: 0,
@@ -239,8 +218,9 @@ mod tests {
     use tokio::sync::{mpsc, oneshot};
 
     use crate::errors::RaftError;
-    use crate::raft::node::{NodeState, RaftNode};
-    use crate::rpc::server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
+    use crate::raft::raft_log::RaftLog;
+    use crate::raft::raft_node::{NodeState, RaftNode};
+    use crate::rpc::rpc_server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
     use crate::rpc::RaftEvent;
     use crate::rpc::RaftEvent::{PeerAppendEntriesResponseEvent, PeerVotesRequestEvent, PeerVotesResponseEvent, RequestVoteResponseEvent};
 
@@ -251,6 +231,7 @@ mod tests {
         let mut node = RaftNode {
             id: "node1".to_string(),
             peers: vec!["node2".to_string(), "node3".to_string()],
+            log: RaftLog::new(),
             current_term: 1,
             voted_for: None,
             commit_index: 0,
@@ -297,6 +278,7 @@ mod tests {
         let mut node = RaftNode {
             id: node_id.clone(),
             peers: vec!["node2".to_string(), "node3".to_string()],
+            log: RaftLog::new(),
             current_term: 1,
             voted_for: Some(node_id.clone()),
             commit_index: 0,
@@ -355,6 +337,7 @@ mod tests {
         let mut node = RaftNode {
             id: node_id.clone(),
             peers: vec!["node2".to_string(), "node3".to_string()],
+            log: RaftLog::new(),
             current_term: 1,
             voted_for: Some(node_id.clone()),
             commit_index: 0,
@@ -395,6 +378,7 @@ mod tests {
         let mut node = RaftNode {
             id: node_id.clone(),
             peers: vec!["node2".to_string(), "node3".to_string()],
+            log: RaftLog::new(),
             current_term: 1,
             voted_for: Some(node_id.clone()),
             commit_index: 0,
@@ -436,6 +420,7 @@ mod tests {
         let mut node = RaftNode {
             id: node_id.clone(),
             peers: vec!["node2".to_string(), "node3".to_string()],
+            log: RaftLog::new(),
             current_term: 2,
             voted_for: Some(node_id.clone()),
             commit_index: 0,
@@ -478,3 +463,24 @@ mod tests {
         Ok(())
     }
 }
+
+
+//TODO - Let's come to this later
+//Reference: https://hoverbear.org/blog/rust-state-machine-pattern/
+/*
+struct Leader {}
+struct Candidate {}
+struct Follower {}
+
+impl RaftNode<Leader> {
+    fn new() -> Self {
+        RaftNode {
+            id: "",
+            current_term: 0,
+            voted_for: "",
+            commit_index: 0,
+            last_applied_index: 0,
+            state: Leader,
+        }
+    }
+}*/

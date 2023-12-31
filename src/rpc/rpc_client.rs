@@ -6,8 +6,8 @@ use tonic::transport::Channel;
 use tracing::{debug};
 
 use crate::errors::{RaftError, RaftResult};
-use crate::rpc::server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
-use crate::rpc::server::raft::raft_grpc_client::RaftGrpcClient;
+use crate::rpc::rpc_server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
+use crate::rpc::rpc_server::raft::raft_grpc_client::RaftGrpcClient;
 
 pub struct RaftGrpcClientStub {
     //Need to protect the grpc client due to concurrent access within the node for various messages

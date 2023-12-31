@@ -6,8 +6,8 @@ use tokio::time::sleep;
 use tracing::{debug, error, info};
 
 use crate::errors::{RaftResult};
-use crate::rpc::client::RaftGrpcClientStub;
-use crate::rpc::server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
+use crate::rpc::rpc_client::RaftGrpcClientStub;
+use crate::rpc::rpc_server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
 
 #[derive(Clone)]
 pub struct PeerNetwork {

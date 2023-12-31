@@ -5,13 +5,12 @@ pub mod rpc_server;
 pub mod rpc_client;
 pub mod rpc_peer_network;
 
-
 #[derive(Debug, Clone)]
 pub enum RaftEvent {
     PeerVotesRequestEvent(RequestVoteRequest),
-    PeerAppendEntriesRequestEvent(AppendEntriesRequest),
     PeerVotesResponseEvent(Vec<RequestVoteResponse>),
-    PeerAppendEntriesResponseEvent(Vec<AppendEntriesResponse>),
+    AppendEntriesRequestEvent(AppendEntriesRequest),
+    AppendEntriesResponseEvent(AppendEntriesResponse),
 
     /*
     Encapsulates individual Raft messages that are sent through the oneshot senders.
@@ -19,6 +18,5 @@ pub enum RaftEvent {
     The client stubs get back these individual responses and collects them into a collection before sending it back to the caller node.
     */
     RequestVoteResponseEvent(RequestVoteResponse),
-    AppendEntriesResponseEvent(AppendEntriesResponse),
 }
 

@@ -1,3 +1,5 @@
+use crate::errors::RaftResult;
+
 #[derive(Debug)]
 pub struct RaftLog {
     inner: Vec<LogEntry>,
@@ -10,7 +12,7 @@ impl RaftLog {
         }
     }
     pub fn append(&mut self, entry: LogEntry) {
-        self.inner.push(entry);
+        self.inner.push(entry)
     }
 
     pub fn get(&self, index: u64) -> Option<&LogEntry> {
@@ -35,4 +37,14 @@ pub struct LogEntry {
     index: u64,
     term: u32,
     command: String,
+}
+
+impl LogEntry {
+    pub fn new(index: u64, term: u32, command: String) -> Self {
+        Self {
+            index,
+            term,
+            command,
+        }
+    }
 }

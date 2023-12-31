@@ -11,10 +11,10 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::oneshot::error::RecvError;
 use tonic::Response;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use crate::errors::{RaftError, RaftResult};
 use crate::rpc::RaftEvent;
-use crate::web::{ClientEvent, Command};
+use crate::web::{ClientEvent, SetCommand};
 
 pub struct WebServer {}
 
@@ -23,7 +23,7 @@ impl WebServer {
     pub async fn start_server(
         node_id: &str,
         address: SocketAddr,
-        client_to_server_tx: UnboundedSender<(ClientEvent, oneshot::Sender<ClientEvent>)>,
+        client_to_server_tx: UnboundedSender<(ClientEvent, oneshot::Sender<RaftResult<ClientEvent>>)>,
     ) -> Result<(), Box<dyn Error>> {
         info!("Initializing web services on {node_id} at {address:?}...");
 
@@ -48,22 +48,22 @@ impl WebServer {
 
 #[derive(Debug, Clone)]
 pub struct AppState {
-    client_to_server_tx: UnboundedSender<(ClientEvent, oneshot::Sender<ClientEvent>)>,
+    client_to_server_tx: UnboundedSender<(ClientEvent, oneshot::Sender<RaftResult<ClientEvent>>)>,
 }
 
 async fn command_handler(
     State(AppState { client_to_server_tx }): State<AppState>,
-    Json(command): Json<Command>,
+    Json(command): Json<SetCommand>,
 ) -> (StatusCode, String) {
     //TODO - Implement IntoResponse for RaftError (and therefore RaftResult) and move away from this tuple response
-    info!("Received client command: {:?}", command);
-    let (tx, rx) = oneshot::channel::<ClientEvent>();
+    debug!("Received client command: {:?}", command);
+    let (tx, rx) = oneshot::channel::<RaftResult<ClientEvent>>();
     let event = ClientEvent::CommandRequestEvent(command);
     //FIXME - Modify this `expect` when we change the return type to Result
     client_to_server_tx.send((event, tx)).expect("Unable to send command to the server");
     match rx.await {
-        Ok(ClientEvent::CommandResponseEvent(resp)) => {
-            info!("Received client response: {:?}", resp);
+        Ok(Ok(ClientEvent::CommandResponseEvent(resp))) => {
+            debug!("Received client response: {:?}", resp);
             (StatusCode::OK, resp.to_string())
         }
         Err(e) => {

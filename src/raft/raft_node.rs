@@ -1,15 +1,16 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use rand::Rng;
 use tokio::sync::{mpsc, oneshot};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::errors::{RaftError, RaftResult};
-use crate::raft::raft_node::NodeState::Leader;
+use crate::raft::raft_log::{LogEntry, RaftLog};
+use crate::raft::raft_node::NodeState::{Candidate, Follower, Leader};
 use crate::raft::{ELECTION_MAX_TIMEOUT_TICKS, ELECTION_MIN_TIMEOUT_TICKS, HEARTBEAT_TICKS};
-use crate::raft::raft_log::RaftLog;
 use crate::rpc::rpc_server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
 use crate::rpc::RaftEvent;
 use crate::rpc::RaftEvent::{AppendEntriesResponseEvent, RequestVoteResponseEvent};
+use crate::web::ClientEvent;
 
 pub struct RaftNode {
     //TODO Expose this as a function
@@ -64,21 +65,27 @@ impl RaftNode {
             // As a leader, send heartbeats to all peers
             if node.elapsed_ticks_since_last_heartbeat >= HEARTBEAT_TICKS {
                 node.elapsed_ticks_since_last_heartbeat = 0;
-                let _ = &node
-                    .node_to_peers_tx
-                    .send(RaftEvent::PeerAppendEntriesRequestEvent(AppendEntriesRequest {
-                        term: node.current_term,
-                        leader_id: node.id.to_string(),
-                        prev_log_index: 0,
-                        prev_log_term: 0,
-                        entries: vec![],
-                        leader_commit_index: 0,
-                    }));
+                for peer in node.peers.iter() {
+                    let _ = &node
+                        .node_to_peers_tx
+                        .send(RaftEvent::AppendEntriesRequestEvent(AppendEntriesRequest {
+                            to: peer.to_string(),
+                            term: node.current_term,
+                            leader_id: node.id.to_string(),
+                            prev_log_index: 0,
+                            prev_log_term: 0,
+                            entries: vec![],
+                            leader_commit_index: node.commit_index,
+                        }));
+                }
             }
             return Ok(node);
         } else {
             // As a follower, if we don't hear from the leader within the election timeout, then become a candidate
-            info!("Current elapsed ticks for node: {} is {}. Election timeout is : {}", node.id, node.elapsed_ticks_since_last_heartbeat, node.election_timeout_ticks);
+            debug!(
+                "Current elapsed ticks for node: {} is {}. Election timeout is : {}",
+                node.id, node.elapsed_ticks_since_last_heartbeat, node.election_timeout_ticks
+            );
             if node.elapsed_ticks_since_last_heartbeat >= node.election_timeout_ticks {
                 let node = node.become_candidate()?; //TODO - This needs to start election
                 return Ok(node);
@@ -113,40 +120,36 @@ impl RaftNode {
                     })));
                 }
             }
-            (RaftEvent::PeerAppendEntriesRequestEvent(req), Some(sender)) => {
+            (RaftEvent::AppendEntriesRequestEvent(req), Some(sender)) => {
                 //If we get an AppendEntriesRequest with an incoming term more than the current term,
                 //then become a follower and bail out.
-                info!("Processing AppendEntriesRequestEvent from {}", req.leader_id);
+                debug!("Processing AppendEntriesRequestEvent {}",req.leader_id );
                 //FIXME - Ignore log entries for now
                 node.elapsed_ticks_since_last_heartbeat = 0;
                 let _ = sender.send(Ok(AppendEntriesResponseEvent(AppendEntriesResponse {
                     from: node.id.to_string(),
                     term: req.term,
                     success: true,
-                    last_applied_index: 0,
+                    last_applied_index: node.last_applied_index,
                 })));
 
-                if node.current_term < req.term {
+                if node.current_term < req.term && node.state != Follower {
                     node = node.become_follower(req.term)?;
                 }
             }
-            (RaftEvent::PeerAppendEntriesResponseEvent(responses), None) => {
-                info!("Received AppendEntriesResponse from peers: {responses:?}");
-
-                for response in responses.iter() {
-                    if response.term > node.current_term {
-                        node = node.become_follower(response.term)?;
-                    }
+            (RaftEvent::AppendEntriesResponseEvent(response), None) => {
+                debug!("Received AppendEntriesResponse from peer: {response:?}");
+                if response.term > node.current_term && node.state != Follower {
+                    node = node.become_follower(response.term)?;
                 }
                 //TODO - Handle the responses by updating the logs
-                info!("Received AppendEntriesResponse from peers: {responses:?}");
             }
             (RaftEvent::PeerVotesResponseEvent(responses), None) => {
-                info!("Received AppendEntriesResponse from peers: {responses:?}");
+                info!("Received RequestVoteResponse from peers: {responses:?}");
                 let quorum_size = (node.peers.len() + 1) / 2;
                 let response_count = responses.iter().filter(|&r| r.vote_granted).count();
                 if response_count >= quorum_size {
-                    //Yaay! We have won the election. Become a leader.
+                    //Yay! We have won the election. Become a leader.
                     node = node.become_leader()?;
                 } else {
                     //We have failed the election. Become a follower.
@@ -156,10 +159,50 @@ impl RaftNode {
             }
             _ => {
                 error!("Unexpected event received: {:?}", event);
-                return Err(RaftError::InternalServerErrorWithContext(format!("Unexpected event received: {:?}", event)));
+                return Err(RaftError::InternalServerErrorWithContext(format!(
+                    "Unexpected event received: {:?}",
+                    event
+                )));
             }
         }
         Ok(node)
+    }
+
+    //Process client requests
+    pub fn handle_client_request(
+        &mut self,
+        event: (
+            ClientEvent,
+            oneshot::Sender<RaftResult<ClientEvent>>,
+        ),
+    ) -> RaftResult<()> {
+        let node_id = self.id.to_string();
+        match event {
+            (ClientEvent::CommandRequestEvent(cmd), sender) => {
+                if self.state != Leader {
+                    let _x = sender.send(Err(RaftError::BadRequest("Client request can be sent only to the leader.".to_string())));
+                    return Err(RaftError::BadRequest("Client request can be sent only to the leader.".to_string()));
+                } else {
+                    let entry = LogEntry::new(
+                        0,
+                        0,
+                        serde_json::to_string(&cmd).context("Unable to serialize SetCommand to json")?,
+                    );
+                    info!("New LogEntry being added to Leader node: {:?}", entry);
+                    self.log.append(entry);
+                    //TODO - Revisit. This seems hacked. However, since we are just an in-memory append, the chances of failure is none.
+                    let _ = sender.send(Ok(ClientEvent::CommandResponseEvent(true)));
+                    Ok(())
+                }
+            }
+            _ => {
+                error!("Unexpected event received: {:?}", event);
+                return Err(RaftError::InternalServerErrorWithContext(format!(
+                    "Unexpected event received: {:?}",
+                    event
+                )));
+            }
+        }
     }
 
     pub fn become_candidate(self) -> RaftResult<RaftNode> {
@@ -187,16 +230,19 @@ impl RaftNode {
         let mut node = self;
         info!("Node {} is promoted to be the LEADER", node.id);
         node.state = NodeState::Leader;
-        let _ = &node
-            .node_to_peers_tx
-            .send(RaftEvent::PeerAppendEntriesRequestEvent(AppendEntriesRequest {
-                term: node.current_term,
-                leader_id: node.id.to_string(),
-                prev_log_index: 0,
-                prev_log_term: 0,
-                entries: vec![],
-                leader_commit_index: 0,
-            }));
+        for peer in node.peers.iter() {
+            let _ = &node
+                .node_to_peers_tx
+                .send(RaftEvent::AppendEntriesRequestEvent(AppendEntriesRequest {
+                    to: peer.to_string(),
+                    term: node.current_term,
+                    leader_id: node.id.to_string(),
+                    prev_log_index: 0,
+                    prev_log_term: 0,
+                    entries: vec![],
+                    leader_commit_index: 0,
+                }));
+        }
         Ok(node)
     }
 
@@ -218,14 +264,19 @@ mod tests {
     use tokio::sync::{mpsc, oneshot};
 
     use crate::errors::RaftError;
+    use crate::raft::HEARTBEAT_TICKS;
     use crate::raft::raft_log::RaftLog;
     use crate::raft::raft_node::{NodeState, RaftNode};
     use crate::rpc::rpc_server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
     use crate::rpc::RaftEvent;
-    use crate::rpc::RaftEvent::{PeerAppendEntriesResponseEvent, PeerVotesRequestEvent, PeerVotesResponseEvent, RequestVoteResponseEvent};
+    use crate::rpc::RaftEvent::{
+        PeerVotesRequestEvent, PeerVotesResponseEvent,
+        RequestVoteResponseEvent,
+    };
+    use pretty_assertions::assert_eq;
 
     #[test]
-    fn test_follower_to_candidate() -> Result<(), RaftError> {
+    fn test_election_follower_to_candidate() -> Result<(), RaftError> {
         let (node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
 
         let mut node = RaftNode {
@@ -239,13 +290,10 @@ mod tests {
             state: NodeState::Candidate,
             node_to_peers_tx,
             elapsed_ticks_since_last_heartbeat: 0,
-            election_timeout_ticks: 0,
+            election_timeout_ticks: 1,
         };
-        let timeout = node.election_timeout_ticks;
-        for _ in 0..timeout {
-            node = node.tick()?;
-        }
-        let node = node.tick()?;
+
+        node = node.tick()?;
 
         //Assert node state
         assert_eq!(node.state, NodeState::Candidate);
@@ -272,7 +320,7 @@ mod tests {
     }
 
     #[test]
-    fn test_candidate_to_leader() -> Result<(), RaftError> {
+    fn test_election_candidate_to_leader() -> Result<(), RaftError> {
         let (node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node1".to_string();
         let mut node = RaftNode {
@@ -286,18 +334,20 @@ mod tests {
             state: NodeState::Candidate,
             node_to_peers_tx,
             elapsed_ticks_since_last_heartbeat: 0,
-            election_timeout_ticks: 0,
+            election_timeout_ticks: 5,
         };
+
+        node = node.tick()?;
 
         let peer_vote_responses = PeerVotesResponseEvent(vec![
             RequestVoteResponse {
                 from: "node2".to_string(),
-                term: 2,
+                term: 1,
                 vote_granted: true,
             },
             RequestVoteResponse {
                 from: "node3".to_string(),
-                term: 2,
+                term: 1,
                 vote_granted: true,
             },
         ]);
@@ -308,22 +358,32 @@ mod tests {
         assert_eq!(node.state, NodeState::Leader);
         assert_eq!(node.current_term, 1);
         assert_eq!(node.voted_for, Some(node_id));
-
+        for _ in 0..=HEARTBEAT_TICKS {
+            node = node.tick()?;
+        }
+        let heart_beat_receipts = vec![
+            AppendEntriesRequest {
+                to: "node2".to_string(),
+                term: 1,
+                leader_id: "node1".to_string(),
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries: vec![],
+                leader_commit_index: 0,
+            },
+            AppendEntriesRequest {
+                to: "node3".to_string(),
+                term: 1,
+                leader_id: "node1".to_string(),
+                prev_log_index: 0,
+                prev_log_term: 0,
+                entries: vec![],
+                leader_commit_index: 0,
+            },
+        ];
         //Assert receipt of heartbeats
         while let Some(Some(request)) = peers_from_node_tx.recv().now_or_never() {
-            if let RaftEvent::PeerAppendEntriesRequestEvent(request) = request {
-                assert_eq!(
-                    request,
-                    AppendEntriesRequest {
-                        term: 1,
-                        leader_id: "node1".to_string(),
-                        prev_log_index: 0,
-                        prev_log_term: 0,
-                        entries: vec![],
-                        leader_commit_index: 0,
-                    }
-                );
-            } else {
+            if let RaftEvent::AppendEntriesRequestEvent(request) = request {} else {
                 panic!("Unexpected failure in testcase")
             }
         }
@@ -331,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    fn test_leader_to_follower_if_votes_not_granted() -> Result<(), RaftError> {
+    fn test_election_leader_to_follower_if_votes_not_granted() -> Result<(), RaftError> {
         let (node_to_peers_tx, _peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node1".to_string();
         let mut node = RaftNode {
@@ -372,7 +432,8 @@ mod tests {
     }
 
     #[test]
-    fn test_leader_to_follower_if_append_entries_response_has_greater_term() -> Result<(), RaftError> {
+    fn test_election_leader_to_follower_if_append_entries_response_has_greater_term() -> Result<(), RaftError>
+    {
         let (node_to_peers_tx, _peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node1".to_string();
         let mut node = RaftNode {
@@ -389,22 +450,14 @@ mod tests {
             election_timeout_ticks: 0,
         };
 
-        let append_entries_responses = PeerAppendEntriesResponseEvent(vec![
-            AppendEntriesResponse {
-                from: "node2".to_string(),
-                term: 2,
-                success: true,
-                last_applied_index: 0,
-            },
-            AppendEntriesResponse {
-                from: "node3".to_string(),
-                term: 2,
-                success: true,
-                last_applied_index: 0,
-            },
-        ]);
+        let append_entries_response = RaftEvent::AppendEntriesResponseEvent(AppendEntriesResponse {
+            from: "node2".to_string(),
+            term: 2,
+            success: true,
+            last_applied_index: 0,
+        });
 
-        node = node.step((append_entries_responses, None))?;
+        node = node.step((append_entries_response, None))?;
         //Assert node state
         assert_eq!(node.state, NodeState::Follower);
         assert_eq!(node.current_term, 2);
@@ -414,7 +467,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_follower_to_not_grant_vote_if_req_term_is_lower() -> Result<(), RaftError> {
+    async fn test_election_follower_to_not_grant_vote_if_req_term_is_lower() -> Result<(), RaftError> {
         let (node_to_peers_tx, _peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node1".to_string();
         let mut node = RaftNode {
@@ -463,7 +516,6 @@ mod tests {
         Ok(())
     }
 }
-
 
 //TODO - Let's come to this later
 //Reference: https://hoverbear.org/blog/rust-state-machine-pattern/

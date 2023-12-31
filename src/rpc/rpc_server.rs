@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use tokio::sync::{mpsc, oneshot};
 use tonic::{Request, Response, Status};
 use tonic::transport::Server;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use raft::{AppendEntriesResponse, RequestVoteResponse};
 use raft::raft_grpc_server::RaftGrpc;
@@ -12,7 +12,7 @@ use raft::raft_grpc_server::RaftGrpcServer;
 use crate::errors::{RaftError, RaftResult};
 use crate::errors::RaftError::InternalServerErrorWithContext;
 use crate::rpc::{RaftEvent};
-use crate::rpc::RaftEvent::{PeerAppendEntriesRequestEvent, PeerVotesRequestEvent};
+use crate::rpc::RaftEvent::{AppendEntriesRequestEvent, PeerVotesRequestEvent};
 use crate::rpc::rpc_server::raft::{AppendEntriesRequest, RequestVoteRequest};
 
 pub mod raft {
@@ -46,26 +46,8 @@ impl RaftGrpcServerStub {
 
 #[tonic::async_trait]
 impl RaftGrpc for RaftGrpcServerStub {
-    async fn append_entries(&self, request: Request<AppendEntriesRequest>) -> Result<Response<AppendEntriesResponse>, Status> {
-        info!("Request received is {:?}", request);
-        let (node_to_server_tx, server_from_node_rx) = tokio::sync::oneshot::channel();
-        self.server_to_node_tx.send((PeerAppendEntriesRequestEvent(request.into_inner()), Some(node_to_server_tx))).expect("Should be able to forward the request to node");
-        match server_from_node_rx.await {
-            Ok(Ok(RaftEvent::AppendEntriesResponseEvent(response))) => {
-                Ok(Response::new(response))
-            }
-            Err(e) => {
-                error!("Unable to send back append_entries response back to callee. Error is : {e:?}");
-                Err(Status::internal(format!("Unable to send back append_entries response back to callee. Error is : {e:?}")))
-            }
-            _ => {
-                error!("Some unexpected match pattern came up in append_entries response stream");
-                Err(Status::internal("Some unexpected match pattern came up in append_entries response stream"))
-            }
-        }
-    }
     async fn request_vote(&self, request: Request<RequestVoteRequest>) -> Result<Response<RequestVoteResponse>, Status> {
-        info!("Request received is {:?}", request);
+        info!("RequestVote received : {:?}", request);
         let (node_to_server_tx, server_from_node_rx) = oneshot::channel();
         self.server_to_node_tx.send((PeerVotesRequestEvent(request.into_inner()), Some(node_to_server_tx))).expect("Should be able to forward the request to node");
         match server_from_node_rx.await {
@@ -79,6 +61,28 @@ impl RaftGrpc for RaftGrpcServerStub {
             _ => {
                 error!("Some unexpected match pattern came up in request_vote response stream");
                 Err(Status::internal("Some unexpected match pattern came up in request_vote response stream"))
+            }
+        }
+    }
+
+    async fn append_entries(&self, request: Request<AppendEntriesRequest>) -> Result<Response<AppendEntriesResponse>, Status> {
+        let request = request.into_inner();
+        if request.entries.len() > 0 {
+            info!("AppendEntries received : {:?}", request);
+        }
+        let (node_to_server_tx, server_from_node_rx) = tokio::sync::oneshot::channel();
+        self.server_to_node_tx.send((AppendEntriesRequestEvent(request), Some(node_to_server_tx))).expect("Should be able to forward the request to node");
+        match server_from_node_rx.await {
+            Ok(Ok(RaftEvent::AppendEntriesResponseEvent(response))) => {
+                Ok(Response::new(response))
+            }
+            Err(e) => {
+                error!("Unable to send back append_entries response back to callee. Error is : {e:?}");
+                Err(Status::internal(format!("Unable to send back append_entries response back to callee. Error is : {e:?}")))
+            }
+            _ => {
+                error!("Some unexpected match pattern came up in append_entries response stream");
+                Err(Status::internal("Some unexpected match pattern came up in append_entries response stream"))
             }
         }
     }

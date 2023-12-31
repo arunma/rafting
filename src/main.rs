@@ -6,6 +6,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use tracing::info;
 use tracing_subscriber::util::SubscriberInitExt;
+use rafting::errors::RaftResult;
 
 use rafting::raft::raft_server::RaftServer;
 use rafting::web::ClientEvent;
@@ -28,9 +29,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let grpc_address: SocketAddr = grpc_addr.as_str().parse().expect("Invalid address");
     let web_address: SocketAddr = web_addr.as_str().parse().expect("Invalid address");
 
-    let (client_to_server_tx, server_from_client_rx) = mpsc::unbounded_channel::<(ClientEvent, oneshot::Sender<ClientEvent>)>();
-    let raft_server_handle = RaftServer::start_server(id, grpc_address, peers, server_from_client_rx);
-    let web_server_handle = WebServer::start_server(id, web_address, client_to_server_tx);
+    let (client_to_node_tx, node_from_client_rx) = mpsc::unbounded_channel::<(ClientEvent, oneshot::Sender<RaftResult<ClientEvent>>)>();
+    let raft_server_handle = RaftServer::start_server(id, grpc_address, peers, node_from_client_rx);
+    let web_server_handle = WebServer::start_server(id, web_address, client_to_node_tx);
 
     tokio::try_join!(raft_server_handle, web_server_handle)?;
 

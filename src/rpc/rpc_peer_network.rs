@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 use std::sync::{Arc};
+use anyhow::Context;
 
 use tokio::sync::{Mutex};
 use tokio::time::sleep;
 use tracing::{debug, error, info};
 
-use crate::errors::{RaftResult};
+use crate::errors::{RaftError, RaftResult};
 use crate::rpc::rpc_client::RaftGrpcClientStub;
 use crate::rpc::rpc_server::raft::{AppendEntriesRequest, AppendEntriesResponse, RequestVoteRequest, RequestVoteResponse};
 
@@ -21,28 +22,6 @@ impl PeerNetwork {
             node_id,
             peers: Arc::new(Default::default()),
         }
-    }
-    pub async fn send_heartbeats(&self, request: AppendEntriesRequest) -> RaftResult<Vec<AppendEntriesResponse>> {
-        let peers = self.peers.lock().await;
-        let mut handles = Vec::with_capacity(peers.len());
-        for (_id, client) in peers.iter() {
-            let future = client.append_entries(request.clone());
-            handles.push(future)
-        }
-        let joined = futures::future::join_all(handles).await;
-        let responses = joined.into_iter().filter_map(|result| {
-            match result {
-                Ok(resp) => {
-                    debug!("Received AppendEntriesResponse on node_id: {} -> :{resp:?}", self.node_id);
-                    Some(resp)
-                }
-                Err(e) => {
-                    error!("Error received at {} while sending AppendEntry to the peers. Tonic error is {:?}", self.node_id, e);
-                    None
-                }
-            }
-        }).collect::<Vec<AppendEntriesResponse>>();
-        Ok(responses)
     }
 
     pub async fn request_vote(&self, request: RequestVoteRequest) -> RaftResult<Vec<RequestVoteResponse>> {
@@ -66,6 +45,22 @@ impl PeerNetwork {
             }
         }).collect::<Vec<RequestVoteResponse>>();
         Ok(responses)
+    }
+
+    pub async fn append_entries(&self, request: AppendEntriesRequest) -> RaftResult<AppendEntriesResponse> {
+        let peers = self.peers.lock().await;
+        let client = peers.get(&request.to).context(format!("Peer client for peer {:?} does not exist", &request.to))?;
+        let result = client.append_entries(request).await;
+        match result {
+            Ok(resp) => {
+                debug!("Received AppendEntriesResponse on node_id: {} -> :{resp:?}", self.node_id);
+                Ok(resp)
+            }
+            Err(e) => {
+                error!("Error received at {} while sending AppendEntry to the peers. Tonic error is {:?}", self.node_id, e);
+                Err(RaftError::InternalServerErrorWithContext(format!("Error received at {} while sending AppendEntry to the peers. Tonic error is {:?}", self.node_id, e)))
+            }
+        }
     }
 
 

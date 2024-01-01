@@ -46,9 +46,11 @@ WIP (currently being tested only with two nodes) - Need to source this info from
 
 ### Running a two-node cluster locally : (node1, node2)
 
+To add more node, add a new entry in the `cluster_config.yaml` file.
+
 ```bash
-cargo watch -x build -x check -x "run -- node1 [::1]:7070 [::1]:7071 node2 http://[::1]:8080"
-cargo watch -x build -x check -x "run -- node2 [::1]:8080 [::1]:8081 node1 http://[::1]:7070"
+cargo run -- -n node1 -c config/cluster_config.yaml
+cargo run -- -n node2 -c config/cluster_config.yaml
 ```
 
 ## Contributing

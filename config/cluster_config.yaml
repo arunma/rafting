@@ -1,0 +1,16 @@
+---
+tick_interval_ms: 200
+heartbeat_ticks: 2
+election_min_timeout_ticks: 7
+election_max_timeout_ticks: 10
+cluster:
+  - node_id: node1
+    grpc_address: "[::1]:7070"
+    web_address: "[::1]:7071"
+    peers:
+      - node2
+  - node_id: node2
+    grpc_address: "[::1]:8080"
+    web_address: "[::1]:8081"
+    peers:
+      - node1

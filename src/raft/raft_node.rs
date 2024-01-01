@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::HashMap;
 use anyhow::{anyhow, Context};
 use rand::Rng;
@@ -208,6 +209,7 @@ impl RaftNode {
                             node.log.append_all_from(req.entries, req.prev_log_index as usize + 1);
                         }
                     }
+                    info!("After appending entries from leader {} for peer {}, the log is: {:?}", req.leader_id, node.id, node.log);
                 }
 
                 //4. Check if the leader_commit_index received is greater than what the current node has.
@@ -235,8 +237,8 @@ impl RaftNode {
                         node.next_index.insert(response.from.clone(), response.last_applied_index + 1);
                         node.match_index.insert(response.from, response.last_applied_index);
                         //Update commit_index based on the presence of the index (with matched term) from quorum
-                        let commit_index = node.commit_index as usize;
-                        for ci in commit_index + 1..node.log.len() {
+                        let commit_index = max(node.commit_index, 0) as usize;
+                        for ci in commit_index..node.log.len() {
                             let entry = node.log.get(ci).unwrap();
                             if entry.term == node.current_term {
                                 let count = node
@@ -249,6 +251,7 @@ impl RaftNode {
                                 }
                             }
                         }
+                        info!("After updating commit_index, the commit index of the node is: {:?}", node.commit_index);
                     } else {
                         //Decrement next_index and retry
                         let next_index = node.next_index.get_mut(&response.from).unwrap();

@@ -53,4 +53,9 @@ impl RaftLog {
     pub fn term_for_index(&self, index: usize) -> i32 {
         self.inner.get(index).map(|entry| entry.term).unwrap_or(-1)
     }
+
+    pub fn inner(&self) -> &Vec<LogEntry> {
+        &self.inner
+    }
 }
+

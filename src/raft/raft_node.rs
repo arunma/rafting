@@ -2,6 +2,7 @@ use std::cmp::max;
 use std::collections::HashMap;
 use anyhow::{anyhow, Context};
 use rand::Rng;
+use tabled::Table;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info};
 
@@ -9,6 +10,7 @@ use crate::errors::{RaftError, RaftResult};
 use crate::raft::raft_log::{RaftLog};
 use crate::raft::raft_node::NodeState::{Follower, Leader};
 use crate::raft::{ELECTION_MAX_TIMEOUT_TICKS, ELECTION_MIN_TIMEOUT_TICKS, HEARTBEAT_TICKS};
+use crate::raft::display::DisplayableLogEntry;
 use crate::rpc::rpc_server::raft::{AppendEntriesRequest, AppendEntriesResponse, LogEntry, RequestVoteRequest, RequestVoteResponse};
 use crate::rpc::RaftEvent;
 use crate::rpc::RaftEvent::{AppendEntriesResponseEvent, RequestVoteResponseEvent};
@@ -144,8 +146,20 @@ impl RaftNode {
         let mut node = self;
         match event {
             (RaftEvent::PeerVotesRequestEvent(req), Some(sender)) => {
-                //As a candidate or a follower, if we get a RequestVoteRequest and if the incoming term is more than the current term,
-                //then vote, become a follower and bail out.
+                info!("Peer votes request event: {req:?}");
+                /*Sometimes (especially during the first election), two candidates are competing for the same term. In this case, we need to
+                make sure that the follower votes only for one of them.*/
+                if req.term == node.current_term && node.voted_for.is_some() && node.voted_for.as_ref().unwrap() != &req.candidate_id {
+                    let _ = sender.send(Ok(RequestVoteResponseEvent(RequestVoteResponse {
+                        from: node_id,
+                        term: req.term,
+                        vote_granted: false,
+                    })));
+                    return Ok(node);
+                }
+
+                /*As a candidate or a follower, if we get a RequestVoteRequest and if the incoming term is more than the current term,
+                then vote, become a follower and bail out.*/
                 if node.current_term < req.term {
                     let _ = sender.send(Ok(RequestVoteResponseEvent(RequestVoteResponse {
                         from: node_id,
@@ -153,6 +167,7 @@ impl RaftNode {
                         vote_granted: true,
                     })));
                     node = node.become_follower(req.term)?;
+                    node.voted_for = Some(req.candidate_id.clone());
                 } else {
                     let _ = sender.send(Ok(RequestVoteResponseEvent(RequestVoteResponse {
                         from: node_id,
@@ -185,8 +200,8 @@ impl RaftNode {
                            to the minimum of leader_commit_index and the last_log_index.
                      */
 
-                    //1. First entry from Leader
                     if req.prev_log_index == -1 {
+                        //1. First entry from Leader
                         node.log.truncate(0); //Just to be sure that the log is empty
                         node.log.append_all(req.entries);
                     } else {
@@ -208,7 +223,8 @@ impl RaftNode {
                             node.log.append_all_from(req.entries, req.prev_log_index as usize + 1);
                         }
                     }
-                    info!("After appending entries from leader {} for peer {}, the log is: {:?}", req.leader_id, node.id, node.log);
+                    let table = Table::new(DisplayableLogEntry::formatted(node.log.inner())).to_string();
+                    info!("Entries in the FOLLOWER {} after appending log from LEADER: {} are: \n {table}", node.id, req.leader_id);
                 }
 
                 //4. Check if the leader_commit_index received is greater than what the current node has.
@@ -250,7 +266,7 @@ impl RaftNode {
                                 }
                             }
                         }
-                        debug!("After updating commit_index, the commit index of the node is: {:?}", node.commit_index)
+                        info!("Received AppendEntryResponses from quorum. Commit index of the LEADER is now: {}", node.commit_index);
                     } else {
                         //Decrement next_index and retry
                         let next_index = node.next_index.get_mut(&response.from).unwrap();
@@ -303,10 +319,12 @@ impl RaftNode {
                         term: self.current_term,
                         command: serde_json::to_string(&cmd).context("Unable to serialize SetCommand to json")?,
                     };
-                    info!("New LogEntry being added to Leader node: {:?}", entry);
+                    info!("New LogEntry being added to LEADER {} is : {:?}", self.id, entry);
                     self.log.append(entry); //Replication will be taken care of by the `tick` function
                     //TODO - Revisit. This seems hacked to send a bool without tying it back to the called function's result.
                     // However, since this is just an in-memory append, the chances of failure is none.
+                    let table = Table::new(DisplayableLogEntry::formatted(self.log.inner())).to_string();
+                    info!("Entries in the LEADER {} after addition is: \n {table}", self.id);
                     let _ = sender.send(Ok(ClientEvent::CommandResponseEvent(true)));
                     Ok(())
                 }
@@ -331,6 +349,7 @@ impl RaftNode {
 
         //TODO - Consider starting election here or during the next `step` call
         let request_vote = RequestVoteRequest {
+            to: "ALL".to_string(), //FIXME
             term: node.current_term,
             candidate_id: node.id.to_string(),
             last_log_index,
@@ -424,6 +443,7 @@ mod tests {
                 assert_eq!(
                     request,
                     RequestVoteRequest {
+                        to: "ALL".to_string(), //FIXME
                         term: 2,
                         candidate_id: "node1".to_string(),
                         last_log_index: -1,
@@ -680,6 +700,7 @@ mod tests {
         };
 
         let request_vote = PeerVotesRequestEvent(RequestVoteRequest {
+            to: "ALL".to_string(), //FIXME
             term: 1,
             candidate_id: "node2".to_string(),
             last_log_index: 0,

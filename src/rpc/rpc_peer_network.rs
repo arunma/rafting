@@ -47,6 +47,22 @@ impl PeerNetwork {
         Ok(responses)
     }
 
+    /*    pub async fn request_vote(&self, request: RequestVoteRequest) -> RaftResult<RequestVoteResponse> {
+            let peers = self.peers.lock().await;
+            let client = peers.get(&request.to).context(format!("Peer client for peer {:?} does not exist", &request.to))?;
+            let result = client.append_entries(request).await;
+            match result {
+                Ok(resp) => {
+                    debug!("Received AppendEntriesResponse on node_id: {} -> :{resp:?}", self.node_id);
+                    Ok(resp)
+                }
+                Err(e) => {
+                    error!("Error received at {} while sending AppendEntry to the peers. Tonic error is {:?}", self.node_id, e);
+                    Err(RaftError::InternalServerErrorWithContext(format!("Error received at {} while sending AppendEntry to the peers. Tonic error is {:?}", self.node_id, e)))
+                }
+            }
+        }*/
+
     pub async fn append_entries(&self, request: AppendEntriesRequest) -> RaftResult<AppendEntriesResponse> {
         let peers = self.peers.lock().await;
         let client = peers.get(&request.to).context(format!("Peer client for peer {:?} does not exist", &request.to))?;

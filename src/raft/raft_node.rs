@@ -89,7 +89,7 @@ impl RaftNode {
             return Ok(node);
         } else {
             // As a follower, if we don't hear from the leader within the election timeout, then become a candidate
-            info!(
+            debug!(
                 "Current elapsed ticks for node: {} is {}. Election timeout is : {}",
                 node.id, node.elapsed_ticks_since_last_heartbeat, node.election_timeout_ticks
             );
@@ -105,7 +105,6 @@ impl RaftNode {
         let node = self;
         let next_index = *self.next_index.get(peer).unwrap_or(&0);
         let (prev_log_index, prev_log_term, entries) = if next_index == 0 {
-            info!("Next index is 0");
             let entries = self.log.get_from(0);
             (-1, -1, entries)
         } else {
@@ -122,7 +121,7 @@ impl RaftNode {
             (prev_log_index, prev_log_term, entries)
         };
 
-        info!("Entries propaged from leader {} to peer {} are: {:?}", node.id, peer, entries);
+        debug!("Entries propaged from leader {} to peer {} are: {:?}", node.id, peer, entries);
         AppendEntriesRequest {
             to: peer.to_string(),
             term: node.current_term,
@@ -171,7 +170,7 @@ impl RaftNode {
                     node.voted_for = Some(req.leader_id.clone()); //
                 }
 
-                if req.entries.len() > 0 {
+                if !req.entries.is_empty() {
                     info!("Received entries from leader {} for peer {} : {:?}", req.leader_id, node.id, req.entries);
                     /*Several validation needs to be done at this point.
                         1. If the prev_log_index is -1, then the leader is sending the first entry to the follower.
@@ -251,7 +250,7 @@ impl RaftNode {
                                 }
                             }
                         }
-                        info!("After updating commit_index, the commit index of the node is: {:?}", node.commit_index);
+                        debug!("After updating commit_index, the commit index of the node is: {:?}", node.commit_index)
                     } else {
                         //Decrement next_index and retry
                         let next_index = node.next_index.get_mut(&response.from).unwrap();
@@ -297,7 +296,7 @@ impl RaftNode {
             (ClientEvent::CommandRequestEvent(cmd), sender) => {
                 if self.state != Leader {
                     let _x = sender.send(Err(RaftError::BadRequest("Client request can be sent only to the leader.".to_string())));
-                    return Err(RaftError::BadRequest("Client request can be sent only to the leader.".to_string()));
+                    Err(RaftError::BadRequest("Client request can be sent only to the leader.".to_string()))
                 } else {
                     let entry = LogEntry {
                         index: self.last_applied_index() + 1,
@@ -314,10 +313,10 @@ impl RaftNode {
             }
             _ => {
                 error!("Unexpected event received: {:?}", event);
-                return Err(RaftError::InternalServerErrorWithContext(format!(
+                Err(RaftError::InternalServerErrorWithContext(format!(
                     "Unexpected event received: {:?}",
                     event
-                )));
+                )))
             }
         }
     }
@@ -479,16 +478,16 @@ mod tests {
         assert_eq!(node.state, NodeState::Leader);
         assert_eq!(node.current_term, 1);
         assert_eq!(node.voted_for, Some(node_id));
-        for _ in 0..=HEARTBEAT_TICKS {
+        /*for _ in 0..=HEARTBEAT_TICKS {
             node = node.tick()?;
-        }
-        let heart_beat_receipts = vec![
+        }*/
+        let expected_heartbeats = vec![
             AppendEntriesRequest {
                 to: "node2".to_string(),
                 term: 1,
                 leader_id: "node1".to_string(),
-                prev_log_index: 0,
-                prev_log_term: 0,
+                prev_log_index: -1,
+                prev_log_term: -1,
                 entries: vec![],
                 leader_commit_index: 0,
                 leader_commit_term: 0,
@@ -497,25 +496,30 @@ mod tests {
                 to: "node3".to_string(),
                 term: 1,
                 leader_id: "node1".to_string(),
-                prev_log_index: 0,
-                prev_log_term: 0,
+                prev_log_index: -1,
+                prev_log_term: -1,
                 entries: vec![],
                 leader_commit_index: 0,
                 leader_commit_term: 0,
             },
         ];
+        let mut actual_heartbeats = vec![];
         //Assert receipt of heartbeats
         while let Some(Some(request)) = peers_from_node_tx.recv().now_or_never() {
-            if let RaftEvent::AppendEntriesRequestEvent(request) = request {} else {
+            if let RaftEvent::AppendEntriesRequestEvent(request) = request {
+                actual_heartbeats.push(request);
+            } else {
                 panic!("Unexpected failure in testcase")
             }
         }
+
+        assert_eq!(expected_heartbeats, actual_heartbeats);
         Ok(())
     }
 
     #[test]
     fn test_election_candidate_to_follower_on_receiving_append_entries() -> Result<(), RaftError> {
-        let (node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
+        let (node_to_peers_tx, _peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node1".to_string();
 
         let mut node = RaftNode {
@@ -545,7 +549,7 @@ mod tests {
             leader_commit_term: 0,
         });
 
-        let (mut tx, mut rx) = oneshot::channel();
+        let (tx, mut rx) = oneshot::channel();
         node = node.step((append_entries_request, Some(tx)))?;
 
         //Assert node state
@@ -767,7 +771,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_log_replication_leader_to_update_indexes_from_append_entries_responses() -> Result<(), RaftError> {
-        let (node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
+        let (node_to_peers_tx, _peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node1".to_string();
         let mut log = RaftLog::new();
         let log_entries = vec![
@@ -829,7 +833,7 @@ mod tests {
     //Case 1
     #[tokio::test]
     async fn test_log_replication_follower_first_entry() -> Result<(), RaftError> {
-        let (node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
+        let (node_to_peers_tx, _peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node2".to_string();
 
         let log_entries = vec![
@@ -860,7 +864,7 @@ mod tests {
             election_timeout_ticks: 5,
         };
 
-        let (mut tx, mut rx) = oneshot::channel();
+        let (tx, mut rx) = oneshot::channel();
         node = node.step((RaftEvent::AppendEntriesRequestEvent(AppendEntriesRequest {
             to: node_id,
             term: 1,
@@ -903,7 +907,7 @@ mod tests {
     //Case 2
     #[tokio::test]
     async fn test_log_replication_follower_failure_overreached_append_entry() -> Result<(), RaftError> {
-        let (node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
+        let (node_to_peers_tx, _peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node2".to_string();
         let mut log = RaftLog::new();
         let follower_log_entries = vec![
@@ -944,7 +948,7 @@ mod tests {
             }
         ];
 
-        let (mut tx, mut rx) = oneshot::channel();
+        let (tx, mut rx) = oneshot::channel();
         node = node.step((RaftEvent::AppendEntriesRequestEvent(AppendEntriesRequest {
             to: node_id,
             term: 1,
@@ -992,7 +996,7 @@ mod tests {
     //Case 3
     #[tokio::test]
     async fn test_log_replication_follower_non_first_entry() -> Result<(), RaftError> {
-        let (node_to_peers_tx, mut peers_from_node_tx) = mpsc::unbounded_channel();
+        let (node_to_peers_tx, _peers_from_node_tx) = mpsc::unbounded_channel();
         let node_id = "node2".to_string();
         let mut log = RaftLog::new();
         let follower_log_entries = vec![
@@ -1033,7 +1037,7 @@ mod tests {
             }
         ];
 
-        let (mut tx, mut rx) = oneshot::channel();
+        let (tx, mut rx) = oneshot::channel();
         node = node.step((RaftEvent::AppendEntriesRequestEvent(AppendEntriesRequest {
             to: node_id,
             term: 1,

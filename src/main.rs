@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-use std::env;
 use std::error::Error;
 use std::net::SocketAddr;
 use clap::Parser;
@@ -23,7 +21,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let config = AppConfig::get_configuration(&args.config)?;
     let node_id = &args.node_id;
-    let node_config = config.cluster.iter().find(|&n| n.node_id == node_id.to_string()).unwrap();
+    let node_config = config.cluster.iter().find(|&n| n.node_id == *node_id).unwrap();
     let grpc_addr = &node_config.grpc_address;
     let web_addr = &node_config.web_address;
     let peers = config.peers(node_config);
@@ -32,7 +30,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let web_address: SocketAddr = web_addr.as_str().parse().expect("Invalid address");
 
     let (client_to_node_tx, node_from_client_rx) = mpsc::unbounded_channel::<(ClientEvent, oneshot::Sender<RaftResult<ClientEvent>>)>();
-    let raft_server_handle = RaftServer::start_server(node_id, grpc_address, peers, node_from_client_rx);
+    let raft_server_handle = RaftServer::start_server(node_id, grpc_address, peers, node_from_client_rx, config.tick_interval_ms);
     let web_server_handle = WebServer::start_server(node_id, web_address, client_to_node_tx);
 
     tokio::try_join!(raft_server_handle, web_server_handle)?;

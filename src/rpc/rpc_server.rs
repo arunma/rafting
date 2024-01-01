@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use tokio::sync::{mpsc, oneshot};
 use tonic::{Request, Response, Status};
 use tonic::transport::Server;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use raft::{AppendEntriesResponse, RequestVoteResponse};
 use raft::raft_grpc_server::RaftGrpc;
@@ -67,7 +67,7 @@ impl RaftGrpc for RaftGrpcServerStub {
 
     async fn append_entries(&self, request: Request<AppendEntriesRequest>) -> Result<Response<AppendEntriesResponse>, Status> {
         let request = request.into_inner();
-        if request.entries.len() > 0 {
+        if !request.entries.is_empty() {
             info!("AppendEntries received : {:?}", request);
         }
         let (node_to_server_tx, server_from_node_rx) = tokio::sync::oneshot::channel();

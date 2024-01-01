@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::error::Error;
 use std::net::SocketAddr;
 use anyhow::{anyhow, Context};
@@ -7,13 +6,10 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::routing::post;
 use tokio::net::TcpListener;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::oneshot;
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::sync::oneshot::error::RecvError;
-use tonic::Response;
 use tracing::{debug, error, info};
-use crate::errors::{RaftError, RaftResult};
-use crate::rpc::RaftEvent;
+use crate::errors::RaftResult;
 use crate::web::{ClientEvent, SetCommand};
 
 pub struct WebServer {}
@@ -60,7 +56,13 @@ async fn command_handler(
     let (tx, rx) = oneshot::channel::<RaftResult<ClientEvent>>();
     let event = ClientEvent::CommandRequestEvent(command);
     //FIXME - Modify this `expect` when we change the return type to Result
-    client_to_server_tx.send((event, tx)).expect("Unable to send command to the server");
+    match client_to_server_tx.send((event, tx)) {
+        Ok(_) => {}
+        Err(e) => {
+            error!("Unable to send command to the server. Server is probably initializing or the request is directed to a non-leader node {e:?}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "Unable to send command to the server. Server is probably initializing or the request is directed to a non-leader node".to_string());
+        }
+    }
     match rx.await {
         Ok(Ok(ClientEvent::CommandResponseEvent(resp))) => {
             debug!("Received client response: {:?}", resp);

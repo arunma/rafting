@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
-use anyhow::{Context, Result as AResult};
+use std::path::PathBuf;
+use anyhow::Context;
 use config::{Config, Environment, FileFormat};
 use dotenv::dotenv;
 use serde::{Deserialize, Serialize};
@@ -12,9 +12,6 @@ use crate::errors::RaftResult;
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AppConfig {
     pub tick_interval_ms: u64,
-    pub heartbeat_ticks: u64,
-    pub election_min_timeout_ticks: u64,
-    pub election_max_timeout_ticks: u64,
     pub cluster: Vec<NodeConfig>,
 
 }
@@ -52,9 +49,9 @@ impl AppConfig {
             let peer_config = self
                 .cluster
                 .iter()
-                .find(|&n| n.node_id == p.to_string())
-                .expect(format!("Peer config must be present for peer: {}", p).as_str());
-            (peer_config.node_id.to_string(), format!("http://{}", peer_config.grpc_address.to_string()))
+                .find(|&n| n.node_id == *p)
+                .unwrap_or_else(|| panic!("Peer config must be present for peer: {}", p));
+            (peer_config.node_id.to_string(), format!("http://{}", peer_config.grpc_address))
         }).collect::<HashMap<String, String>>();
 
         peers
@@ -69,9 +66,6 @@ mod tests {
     fn test_file_and_dotenv_load() {
         let app_cfg = AppConfig::get_configuration(&PathBuf::from("tests/test_cluster_config.yaml")).unwrap();
         assert_eq!(app_cfg.tick_interval_ms, 2000);
-        assert_eq!(app_cfg.heartbeat_ticks, 2);
-        assert_eq!(app_cfg.election_min_timeout_ticks, 7);
-        assert_eq!(app_cfg.election_max_timeout_ticks, 10);
         assert_eq!(app_cfg.cluster.len(), 2);
         assert_eq!(app_cfg.cluster[0].node_id, "node1");
         assert_eq!(app_cfg.cluster[0].grpc_address, "127.0.0.1:7070");

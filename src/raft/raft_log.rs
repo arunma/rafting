@@ -16,19 +16,15 @@ impl RaftLog {
     }
 
     pub fn get(&self, index: usize) -> Option<&LogEntry> {
-        self.inner.get(index as usize)
+        self.inner.get(index)
     }
 
     pub fn get_from(&self, index: usize) -> Vec<LogEntry> {
-        self.inner.iter().skip(index as usize).cloned().collect::<Vec<LogEntry>>()
+        self.inner.iter().skip(index).cloned().collect::<Vec<LogEntry>>()
     }
 
     pub fn len(&self) -> usize {
         self.inner.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 
     pub fn last_log_index(&self) -> i64 {

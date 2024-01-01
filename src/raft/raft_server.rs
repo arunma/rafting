@@ -11,7 +11,6 @@ use tracing::{debug, error, info};
 
 use crate::errors::{RaftError, RaftResult};
 use crate::raft::raft_node::RaftNode;
-use crate::raft::TICK_INTERVAL_MS;
 use crate::rpc::rpc_peer_network::PeerNetwork;
 use crate::rpc::rpc_server::RaftGrpcServerStub;
 use crate::rpc::RaftEvent;
@@ -26,6 +25,7 @@ impl RaftServer {
         address: SocketAddr,
         peers: HashMap<String, String>,
         node_from_client_rx: UnboundedReceiver<(ClientEvent, oneshot::Sender<RaftResult<ClientEvent>>)>,
+        tick_interval_ms: u64,
     ) -> Result<(), Box<dyn Error>> {
         info!("Initializing grpc services on {node_id} at {address:?}...");
 
@@ -65,6 +65,7 @@ impl RaftServer {
         let node_handle = tokio::spawn(async move {
             Self::run(
                 node,
+                tick_interval_ms,
                 peers_from_node_rx,
                 node_from_server_rx,
                 node_from_client_rx,
@@ -85,6 +86,7 @@ impl RaftServer {
 
     async fn run(
         mut node: RaftNode,
+        tick_interval_ms: u64,
         mut peers_from_node_rx: mpsc::UnboundedReceiver<RaftEvent>,
         mut node_from_server_rx: mpsc::UnboundedReceiver<(
             RaftEvent,
@@ -93,7 +95,7 @@ impl RaftServer {
         mut node_from_client_rx: UnboundedReceiver<(ClientEvent, oneshot::Sender<RaftResult<ClientEvent>>)>,
         peer_network: Arc<Mutex<PeerNetwork>>,
     ) -> RaftResult<()> {
-        let mut ticker = tokio::time::interval(Duration::from_millis(TICK_INTERVAL_MS));
+        let mut ticker = tokio::time::interval(Duration::from_millis(tick_interval_ms));
         loop {
             tokio::select! {
                 //Every tick

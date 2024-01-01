@@ -2,8 +2,7 @@
 
 ## Overview
 
-**Rafting** is a learning project that aims to provide a concise implementation of the Raft consensus algorithm in Rust. The primary goal is to serve
-as a learning resource for myself and individuals interested in understanding distributed systems and consensus algorithms.
+**Rafting** is a learning project that aims to provide a concise implementation of the Raft consensus algorithm in Rust. 
 
 ## Features
 

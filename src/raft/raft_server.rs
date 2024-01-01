@@ -105,7 +105,7 @@ impl RaftServer {
                 Some(event) = peers_from_node_rx.recv() => {
                     match event.clone() {
                         RaftEvent::AppendEntriesRequestEvent(req) => {
-                            debug!("AppendEntries request to be send to peers from {} using request: {req:?}", node.id);
+                            debug!("AppendEntries request to be send to peers from {} using request: {req:?}", node.id());
 
                             let response = peer_network
                             .lock()
@@ -116,7 +116,7 @@ impl RaftServer {
                             node = node.step((response_event, None))?;
                         },
                         RaftEvent::PeerVotesRequestEvent(req) => {
-                            info!("Requesting peer votes from {} using request: {req:?}", node.id);
+                            info!("Requesting peer votes from {} using request: {req:?}", node.id());
                             let responses = peer_network
                                 .lock()
                                 .await

@@ -11,7 +11,8 @@ as a learning resource for myself and individuals interested in understanding di
 
 - **RPC Module:** The `rpc` module houses server and client stubs for gRPC-based interactions with the cluster members.
 
-- **Raft Module:** The `raft` module is designed to be agnostic to the RPC mechanism, communicating exclusively through `tokio` channels with
+- **Raft Module:** The `raft` module is designed to be agnostic to the RPC mechanism (although the models are reused in places), communicating
+  exclusively through `tokio` channels with
   the `rpc` module.
 
 ## Getting Started

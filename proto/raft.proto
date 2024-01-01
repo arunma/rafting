@@ -2,33 +2,40 @@ syntax = "proto3";
 package raft;
 
 message RequestVoteRequest {
-  uint32 term = 2;
+  int32 term = 2;
   string candidate_id = 3;
-  uint64 last_log_index = 4;
-  uint32 last_log_term = 5;
+  int64 last_log_index = 4;
+  int32 last_log_term = 5;
 }
 
 message RequestVoteResponse {
   string from = 1;
-  uint32 term = 2;
+  int32 term = 2;
   bool vote_granted = 3;
 }
 
 message AppendEntriesRequest {
   string to = 1;
-  uint32 term = 2;
+  int32 term = 2;
   string leader_id = 3;
-  uint64 prev_log_index = 4;
-  uint32 prev_log_term = 5;
-  repeated bytes entries = 6;
-  uint64 leader_commit_index = 7;
+  int64 prev_log_index = 4;
+  int32 prev_log_term = 5;
+  repeated LogEntry entries = 6;
+  int64 leader_commit_index = 7;
+  int32 leader_commit_term = 8;
 }
 
 message AppendEntriesResponse {
   string from = 1;
-  uint32 term = 2;
+  int32 term = 2;
   bool success = 3;
-  uint64 last_applied_index = 4;
+  int64 last_applied_index = 4;
+}
+
+message LogEntry {
+  int64 index = 1;
+  int32 term = 2;
+  string command = 3;
 }
 
 service RaftGrpc {

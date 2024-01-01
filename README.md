@@ -15,6 +15,10 @@ as a learning resource for myself and individuals interested in understanding di
   exclusively through `tokio` channels with
   the `rpc` module.
 
+## Demo
+
+![]()
+
 ## Getting Started
 
 ### Installation

@@ -51,7 +51,6 @@ To add more node, add a new entry in the `cluster_config.yaml` file.
 ```bash
 cargo run -- -n node1 -c config/cluster_config.yaml
 cargo run -- -n node2 -c config/cluster_config.yaml
-cargo run -- -n node3 -c config/cluster_config.yaml
 ```
 
 ## Contributing

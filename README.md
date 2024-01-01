@@ -17,7 +17,7 @@ as a learning resource for myself and individuals interested in understanding di
 
 ## Demo
 
-![]()
+![](https://github.com/arunma/rafting/blob/master/rafting.gif)
 
 ## Getting Started
 

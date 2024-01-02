@@ -2,17 +2,38 @@
 
 ## Overview
 
-**Rafting** is a learning project that aims to provide a concise implementation of the Raft consensus algorithm in Rust. 
+**Rafting** is a learning project that aims to provide a concise implementation of the Raft consensus algorithm in Rust.
 
-## Features
+## What it is
+
+- **Educational:** This project is intended to be a learning resource for understanding the Raft consensus algorithm.
+- **Implementation of essential features:** This project implements the essential features of the Raft algorithm, including
+    - leader election
+    - log replication
+    - log consistency
+    - client interaction with the cluster (using REST)
+    - in-memory storage
+- **Tested:** This project is tested using a detailed set of unit tests.
+
+## What it isn't
+
+- **Production-ready:** This project is not intended to be used in production.
+- **Missing features:** This project is not a complete implementation of the Raft algorithm. It is missing features such as
+    - membership changes
+    - log compaction
+    - snapshotting
+    - proxying of client requests to the leader
+    - persistent storage
+
+## Implementation detail
 
 - **gRPC Integration:** Utilizes gRPC for Remote Procedure Calls (RPC) between nodes. Protocol definitions are specified in `proto/raft.proto`.
-
-- **RPC Module:** The `rpc` module houses server and client stubs for gRPC-based interactions with the cluster members.
-
-- **Raft Module:** The `raft` module is designed to be agnostic to the RPC mechanism (although the models are reused in places), communicating
-  exclusively through `tokio` channels with
-  the `rpc` module.
+  The `rpc` module houses server and client stubs for gRPC-based interactions with the cluster members.
+- **Raft Module:** The internal interactions within the node is orchestrated through tokio. The `raft` module is designed to be agnostic to the RPC
+  mechanism (although the models are reused in places), communicating
+  exclusively through `tokio` channels with the `rpc` module.
+- **REST API:** The `rafting` binary exposes a REST API for interacting with the cluster (leader only). The API is implemented using the `axum` web
+  framework.
 
 ## Demo
 

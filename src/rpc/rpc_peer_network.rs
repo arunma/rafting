@@ -71,7 +71,6 @@ impl PeerNetwork {
     }
 
     pub async fn wait_for_peers(&mut self) -> RaftResult<()> {
-        //TODO - Optimize for clients whose link has already been established.
         loop {
             info!("Connecting to peers");
             //let mut peer_clients = self.peer_clients.lock().await;

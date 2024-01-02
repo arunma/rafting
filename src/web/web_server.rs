@@ -50,11 +50,9 @@ async fn command_handler(
     State(AppState { client_to_server_tx }): State<AppState>,
     Json(command): Json<SetCommand>,
 ) -> (StatusCode, String) {
-    //TODO - Implement IntoResponse for RaftError (and therefore RaftResult) and move away from this tuple response
     debug!("Received client command: {:?}", command);
     let (tx, rx) = oneshot::channel::<RaftResult<ClientEvent>>();
     let event = ClientEvent::CommandRequestEvent(command);
-    //FIXME - Modify this `expect` when we change the return type to Result
     match client_to_server_tx.send((event, tx)) {
         Ok(_) => {}
         Err(e) => {

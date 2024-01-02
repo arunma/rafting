@@ -150,7 +150,6 @@ impl RaftNode {
         self,
         event: (RaftEvent, Option<oneshot::Sender<RaftResult<RaftEvent>>>),
     ) -> RaftResult<RaftNode> {
-        use *;
         //Process requests and responses
         let node_id = self.id.to_string();
         let mut node = self;

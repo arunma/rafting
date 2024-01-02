@@ -6,16 +6,16 @@ cluster:
     web_address: "127.0.0.1:7071"
     peers:
       - node2
-  #      - node3
+      - node3
   - node_id: node2
     grpc_address: "127.0.0.1:8080"
     web_address: "127.0.0.1:8081"
     peers:
       - node1
-#      - node3
-#  - node_id: node3
-#    grpc_address: "127.0.0.1:9090"
-#    web_address: "127.0.0.1:9091"
-#    peers:
-#      - node1
-#      - node2
+      - node3
+  - node_id: node3
+    grpc_address: "127.0.0.1:9090"
+    web_address: "127.0.0.1:9091"
+    peers:
+      - node1
+      - node2

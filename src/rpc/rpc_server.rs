@@ -49,9 +49,13 @@ impl RaftGrpc for RaftGrpcServerStub {
     async fn request_vote(&self, request: Request<RequestVoteRequest>) -> Result<Response<RequestVoteResponse>, Status> {
         info!("RequestVote received : {:?}", request);
         let (node_to_server_tx, server_from_node_rx) = oneshot::channel();
-        self.server_to_node_tx.send((PeerVotesRequestEvent(request.into_inner()), Some(node_to_server_tx))).expect("Should be able to forward the request to node");
+        self.server_to_node_tx
+            .send((PeerVotesRequestEvent(request.into_inner()), Some(node_to_server_tx)))
+            .map_err(|e| Status::internal(format!("Unable to forward request_vote to node. Error is : {e:?}")))?;
+        info!("RequestVote forwarded to node");
         match server_from_node_rx.await {
             Ok(Ok(RaftEvent::RequestVoteResponseEvent(response))) => {
+                info!("Sending response back to callee : {:?}", response);
                 Ok(Response::new(response))
             }
             Err(e) => {
@@ -71,7 +75,9 @@ impl RaftGrpc for RaftGrpcServerStub {
             info!("AppendEntries received : {:?}", request);
         }
         let (node_to_server_tx, server_from_node_rx) = tokio::sync::oneshot::channel();
-        self.server_to_node_tx.send((AppendEntriesRequestEvent(request), Some(node_to_server_tx))).expect("Should be able to forward the request to node");
+        self.server_to_node_tx
+            .send((AppendEntriesRequestEvent(request), Some(node_to_server_tx)))
+            .map_err(|e| Status::internal(format!("Unable to forward request_vote to node. Error is : {e:?}")))?;
         match server_from_node_rx.await {
             Ok(Ok(RaftEvent::AppendEntriesResponseEvent(response))) => {
                 Ok(Response::new(response))

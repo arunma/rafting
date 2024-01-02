@@ -43,18 +43,12 @@ impl RaftServer {
         let grpc_server = RaftGrpcServerStub::new(server_to_node_tx);
         let grpc_handle = tokio::spawn(grpc_server.run(address));
 
-        let peer_network = Arc::new(Mutex::new(PeerNetwork::new(
-            node_id.to_string(),
-        )));
-        let peer_clone = peers.clone();
+
+        let peers_clone = peers.clone();
+        let node_id_clone = node_id.clone().to_string();
         //Initializing peer network
-        let peer_handle = {
-            let peer_network = peer_network.clone();
-            tokio::spawn(async move {
-                let mut peer_network = peer_network.lock().await;
-                peer_network.wait_for_peers(peers).await
-            })
-        };
+        //let peer_network = peer_network.clone();
+        let mut peer_network = PeerNetwork::new(node_id_clone, peers_clone);
 
         //RaftNode initialization
         //let (node_to_server_for_peers_tx, server_from_node_for_peers_rx) = mpsc::unbounded_channel();
@@ -69,9 +63,8 @@ impl RaftServer {
                 peers_from_node_rx,
                 node_from_server_rx,
                 node_from_client_rx,
-                peer_network.clone(),
-            )
-                .await
+                peer_network,
+            ).await
         });
 
         debug!("Starting server at {:?}", address);
@@ -93,7 +86,7 @@ impl RaftServer {
             Option<oneshot::Sender<RaftResult<RaftEvent>>>,
         )>,
         mut node_from_client_rx: UnboundedReceiver<(ClientEvent, oneshot::Sender<RaftResult<ClientEvent>>)>,
-        peer_network: Arc<Mutex<PeerNetwork>>,
+        peer_network: PeerNetwork,
     ) -> RaftResult<()> {
         let mut ticker = tokio::time::interval(Duration::from_millis(tick_interval_ms));
         loop {
@@ -110,21 +103,17 @@ impl RaftServer {
                             debug!("AppendEntries request to be send to peers from {} using request: {req:?}", node.id());
 
                             let response = peer_network
-                            .lock()
-                            .await
                             .append_entries(req)
                             .await?;
                             let response_event = RaftEvent::AppendEntriesResponseEvent(response);
                             node = node.step((response_event, None))?;
                         },
                         RaftEvent::PeerVotesRequestEvent(req) => {
-                            info!("Requesting peer votes from {} using request: {req:?}", node.id());
-                            let responses = peer_network
-                                .lock()
-                                .await
+                            info!("({}) Requesting peer votes using request: {req:?}", node.id());
+                            let response = peer_network
                                 .request_vote(req)
                                 .await?;
-                            let response_event = RaftEvent::PeerVotesResponseEvent(responses);
+                            let response_event = RaftEvent::RequestVoteResponseEvent(response);
                             node = node.step((response_event, None))?;
                         },
                         _ => {

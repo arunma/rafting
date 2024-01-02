@@ -18,5 +18,7 @@ pub enum RaftEvent {
     The client stubs get back these individual responses and collects them into a collection before sending it back to the caller node.
     */
     RequestVoteResponseEvent(RequestVoteResponse),
+    ClusterNodesDownEvent,
+    ClusterNodesUpEvent,
 }
 

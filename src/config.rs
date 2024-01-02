@@ -26,7 +26,7 @@ pub struct NodeConfig {
 
 impl AppConfig {
     pub fn get_configuration(config_file: &PathBuf) -> RaftResult<AppConfig> {
-        dotenv().ok(); //Load .env file. For Prod, create a function and load the injected secrets as environment variables
+        dotenv().ok();
         let config = Config::builder()
             //Going wild here since we know that the path exists, since the presence of the file is validated by Clap already.
             .add_source(config::File::new(&fs::canonicalize(config_file).unwrap().display().to_string(), FileFormat::Yaml))
@@ -63,20 +63,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_file_and_dotenv_load() {
+    fn test_config() {
         let app_cfg = AppConfig::get_configuration(&PathBuf::from("tests/test_cluster_config.yaml")).unwrap();
-        assert_eq!(app_cfg.tick_interval_ms, 2000);
-        assert_eq!(app_cfg.cluster.len(), 2);
+        assert_eq!(app_cfg.tick_interval_ms, 1000);
+        assert_eq!(app_cfg.cluster.len(), 3);
         assert_eq!(app_cfg.cluster[0].node_id, "node1");
         assert_eq!(app_cfg.cluster[0].grpc_address, "127.0.0.1:7070");
         assert_eq!(app_cfg.cluster[0].web_address, "127.0.0.1:7071");
-        assert_eq!(app_cfg.cluster[0].peers.len(), 1);
-        assert_eq!(app_cfg.cluster[0].peers[0], "node2");
+        assert_eq!(app_cfg.cluster[0].peers.len(), 2);
+        assert_eq!(app_cfg.cluster[0].peers, vec!["node2", "node3"]);
 
         assert_eq!(app_cfg.cluster[1].node_id, "node2");
         assert_eq!(app_cfg.cluster[1].grpc_address, "127.0.0.1:8080");
         assert_eq!(app_cfg.cluster[1].web_address, "127.0.0.1:8081");
-        assert_eq!(app_cfg.cluster[1].peers.len(), 1);
-        assert_eq!(app_cfg.cluster[1].peers[0], "node1");
+        assert_eq!(app_cfg.cluster[1].peers.len(), 2);
+        assert_eq!(app_cfg.cluster[1].peers, vec!["node1", "node3"]);
+
+        assert_eq!(app_cfg.cluster[2].node_id, "node3");
+        assert_eq!(app_cfg.cluster[2].grpc_address, "127.0.0.1:9090");
+        assert_eq!(app_cfg.cluster[2].web_address, "127.0.0.1:9091");
+        assert_eq!(app_cfg.cluster[2].peers.len(), 2);
+        assert_eq!(app_cfg.cluster[2].peers, vec!["node1", "node2"]);
     }
 }

@@ -15,7 +15,6 @@ use crate::web::{ClientEvent, SetCommand};
 pub struct WebServer {}
 
 impl WebServer {
-    //TODO - Add id and peers from config
     pub async fn start_server(
         node_id: &str,
         address: SocketAddr,

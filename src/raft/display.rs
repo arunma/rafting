@@ -9,7 +9,7 @@ pub struct DisplayableLogEntry {
 }
 
 impl DisplayableLogEntry {
-    pub fn formatted(log_entries: &Vec<LogEntry>) -> Vec<DisplayableLogEntry> {
+    pub fn formatted(log_entries: &[LogEntry]) -> Vec<DisplayableLogEntry> {
         let mut entries = Vec::new();
         for entry in log_entries.iter() {
             let command = entry.command.clone();

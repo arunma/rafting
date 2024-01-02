@@ -17,7 +17,6 @@ use rafting::web::web_server::WebServer;
 async fn main() -> Result<(), Box<dyn Error>> {
     info!("In main");
     setup_logger();
-    //TODO - Accept argument as cli parameter. For now, args will do
     let args = Args::parse();
     let config = AppConfig::get_configuration(&args.config)?;
     let node_id = &args.node_id;

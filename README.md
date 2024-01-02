@@ -7,7 +7,7 @@
 ## What it is
 
 - **Educational:** This project is intended to be a learning resource for understanding the Raft consensus algorithm.
-- **Implementation of essential features:** This project implements the essential features of the Raft algorithm, including
+- **Minimal:** This project implements the essential features of the Raft algorithm, including
     - leader election
     - log replication
     - log consistency
@@ -18,7 +18,7 @@
 ## What it isn't
 
 - **Production-ready:** This project is not intended to be used in production.
-- **Missing features:** This project is not a complete implementation of the Raft algorithm. It is missing features such as
+- **Comprehensive:** This project is not a complete implementation of the Raft algorithm. It is missing features such as
     - membership changes
     - log compaction
     - snapshotting

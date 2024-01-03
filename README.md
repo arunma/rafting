@@ -66,15 +66,14 @@ cargo run
 
 ## Usage
 
-WIP (currently being tested only with two nodes) - Need to source this info from config
-
-### Running a two-node cluster locally : (node1, node2)
+### Running a three-node cluster locally : (node1, node2, node3)
 
 To add more node, add a new entry in the `cluster_config.yaml` file.
 
 ```bash
 cargo run -- -n node1 -c config/cluster_config.yaml
 cargo run -- -n node2 -c config/cluster_config.yaml
+cargo run -- -n node3 -c config/cluster_config.yaml
 ```
 
 ## Contributing

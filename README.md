@@ -76,6 +76,30 @@ cargo run -- -n node2 -c config/cluster_config.yaml
 cargo run -- -n node3 -c config/cluster_config.yaml
 ```
 
+### Release mode
+
+Optionally, you could run it in release mode by running:
+
+```bash
+cargo build --release
+```
+
+and then
+
+```bash
+./target/release/rafting -n node1 -c config/cluster_config.yaml
+./target/release/rafting -n node2 -c config/cluster_config.yaml
+./target/release/rafting -n node3 -c config/cluster_config.yaml
+```
+
+### Interacting with the cluster
+
+```bash
+curl -i -X POST -H  "Content-Type: application/json" --request POST --data '{"key":"a","value":"1"}'  http://<LEADER_NODE>:<WEB_PORT>/command
+curl -i -X POST -H  "Content-Type: application/json" --request POST --data '{"key":"b","value":"2"}'  http://<LEADER_NODE>:<WEB_PORT>/command
+curl -i -X POST -H  "Content-Type: application/json" --request POST --data '{"key":"c","value":"3"}'  http://<LEADER_NODE>:<WEB_PORT>/command
+```
+
 ## Contributing
 
 Contributions to Rafting are welcome! Whether you want to fix a bug, add a feature, or improve documentation, feel free to open an issue or submit a
